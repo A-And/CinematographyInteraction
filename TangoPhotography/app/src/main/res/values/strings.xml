@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">TangoPhotography</string>
+
+    <string name="dummy_button">Dummy Button</string>
+    <string name="dummy_content">DUMMY\nCONTENT</string>
+    <string name="photo_feed">Camera Feed</string>
+    <string name="analyze_button">Analyze</string>
+
+</resources>
