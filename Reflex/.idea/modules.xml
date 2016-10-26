@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/Reflex.iml" filepath="$PROJECT_DIR$/Reflex.iml" />
+      <module fileurl="file://$PROJECT_DIR$/app/app.iml" filepath="$PROJECT_DIR$/app/app.iml" />
+      <module fileurl="file://$PROJECT_DIR$/cpp_example_util/cpp_example_util.iml" filepath="$PROJECT_DIR$/cpp_example_util/cpp_example_util.iml" />
+      <module fileurl="file://$PROJECT_DIR$/openCV/openCV.iml" filepath="$PROJECT_DIR$/openCV/openCV.iml" />
+      <module fileurl="file://$PROJECT_DIR$/point_cloud/point_cloud.iml" filepath="$PROJECT_DIR$/point_cloud/point_cloud.iml" />
+    </modules>
+  </component>
+</project>
