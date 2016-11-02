@@ -1,2 +1,2 @@
 <?xml version="1.0" encoding="utf-8"?>
-<merger version="3"><dataSet config="main"><source path="C:\Users\Andon\Documents\Projects\tango-examples-java\Reflex\cpp_example_util\src\main\shaders"/></dataSet><dataSet config="debug"><source path="C:\Users\Andon\Documents\Projects\tango-examples-java\Reflex\cpp_example_util\src\debug\shaders"/></dataSet></merger>
+<merger version="3"><dataSet config="main"><source path="C:\Users\Andon\Documents\Projects\CinematographyInteraction\Reflex\cpp_example_util\src\main\shaders"/></dataSet><dataSet config="debug"><source path="C:\Users\Andon\Documents\Projects\CinematographyInteraction\Reflex\cpp_example_util\src\debug\shaders"/></dataSet></merger>

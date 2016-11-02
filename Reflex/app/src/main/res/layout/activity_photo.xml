@@ -4,14 +4,33 @@
     android:id="@+id/activity_photo"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:paddingBottom="@dimen/activity_vertical_margin"
-    android:paddingLeft="@dimen/activity_horizontal_margin"
-    android:paddingRight="@dimen/activity_horizontal_margin"
-    android:paddingTop="@dimen/activity_vertical_margin"
+    android:paddingBottom="@dimen/camera_vertical_margin"
+    android:paddingLeft="@dimen/camera_horizontal_margin"
+    android:paddingRight="@dimen/camera_horizontal_margin"
+    android:paddingTop="@dimen/camera_vertical_margin"
     tools:context="com.ol.andon.reflex.PhotoActivity">
 
     <FrameLayout
+        android:layout_weight = "1"
         android:id="@+id/camera_view"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content" />
+        android:layout_height="wrap_content">
+
+
+    </FrameLayout>
+    <LinearLayout
+        android:layout_weight = "1"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content">
+        <TextView
+            android:id = "@+id/sensor_readings"
+            android:layout_height="wrap_content"
+            android:layout_width = "wrap_content"
+            android:text="@string/readings_placeholder"/>
+        <TextView
+            android:id = "@+id/pcl_readings"
+            android:layout_height="wrap_content"
+            android:layout_width = "wrap_content"
+            android:text="@string/pcl_placeholder"/>
+    </LinearLayout>
 </RelativeLayout>

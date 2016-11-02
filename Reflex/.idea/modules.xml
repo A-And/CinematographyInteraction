@@ -6,7 +6,6 @@
       <module fileurl="file://$PROJECT_DIR$/app/app.iml" filepath="$PROJECT_DIR$/app/app.iml" />
       <module fileurl="file://$PROJECT_DIR$/cpp_example_util/cpp_example_util.iml" filepath="$PROJECT_DIR$/cpp_example_util/cpp_example_util.iml" />
       <module fileurl="file://$PROJECT_DIR$/openCV/openCV.iml" filepath="$PROJECT_DIR$/openCV/openCV.iml" />
-      <module fileurl="file://$PROJECT_DIR$/point_cloud/point_cloud.iml" filepath="$PROJECT_DIR$/point_cloud/point_cloud.iml" />
     </modules>
   </component>
 </project>

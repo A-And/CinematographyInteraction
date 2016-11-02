@@ -1,6 +1,6 @@
 [
     {
-        "outputFile": "C:\\Users\\Andon\\Documents\\Projects\\tango-examples-java\\Reflex\\point_cloud\\build\\intermediates\\incremental\\mergeDebugResources\\merged.dir\\values-v14\\values-v14.xml",
+        "outputFile": "C:\\Users\\Andon\\Documents\\Projects\\CinematographyInteraction\\Reflex\\point_cloud\\build\\intermediates\\incremental\\mergeDebugResources\\merged.dir\\values-v14\\values-v14.xml",
         "map": [
             {
                 "to": {
@@ -12,7 +12,7 @@
                     "endOffset": 201
                 },
                 "from": {
-                    "file": "C:\\Users\\Andon\\Documents\\Projects\\tango-examples-java\\Reflex\\point_cloud\\src\\main\\res\\values-v14\\styles.xml",
+                    "file": "C:\\Users\\Andon\\Documents\\Projects\\CinematographyInteraction\\Reflex\\point_cloud\\src\\main\\res\\values-v14\\styles.xml",
                     "position": {
                         "startLine": 7,
                         "startColumn": 4,

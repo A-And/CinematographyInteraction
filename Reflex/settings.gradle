@@ -1,2 +1,2 @@
-include ':app', ':cpp_example_util', ':point_cloud'
+include ':app', ':cpp_example_util'
 include ':openCV'

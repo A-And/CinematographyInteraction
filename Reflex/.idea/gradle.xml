@@ -12,7 +12,6 @@
             <option value="$PROJECT_DIR$/app" />
             <option value="$PROJECT_DIR$/cpp_example_util" />
             <option value="$PROJECT_DIR$/openCV" />
-            <option value="$PROJECT_DIR$/point_cloud" />
           </set>
         </option>
         <option name="resolveModulePerSourceSet" value="false" />

@@ -72,4 +72,8 @@ public class CameraView extends SurfaceView implements SurfaceHolder.Callback {
             Log.d(TAG, "Error starting camera preview: " + e.getMessage());
         }
     }
+
+    public void detectEdges(){
+//        org.opencv.imgproc.Imgproc.Canny();
+    }
 }
