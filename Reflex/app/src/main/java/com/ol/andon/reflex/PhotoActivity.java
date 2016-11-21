@@ -25,6 +25,7 @@ import com.google.atap.tangoservice.TangoOutOfDateException;
 import com.google.atap.tangoservice.TangoPointCloudData;
 import com.google.atap.tangoservice.TangoPoseData;
 import com.google.atap.tangoservice.TangoXyzIjData;
+import com.ol.andon.reflex.services.MicroBitPairingService;
 
 import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.core.Mat;
@@ -39,6 +40,7 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
     private static final String PCL_READY = TAG + ".PCL_READY";
     private Camera mCamera;
     private TangoCameraPreview mCameraView;
+    private MicroBitPairingService mMicroBitPairingService;
 
     private Tango mTango;
     private TangoConfig mTangoConfig;
@@ -62,6 +64,9 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         mCameraView = new TangoCameraPreview(this);
         FrameLayout cv = (FrameLayout) findViewById(R.id.camera_view);
         cv.addView(mCameraView);
+        mMicroBitPairingService = new MicroBitPairingService(this);
+        mMicroBitPairingService.connect();
+
     }
 
     @Override
