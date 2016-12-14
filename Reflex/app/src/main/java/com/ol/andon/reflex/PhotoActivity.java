@@ -2,15 +2,17 @@ package com.ol.andon.reflex;
 
 import android.Manifest;
 import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
 import android.content.IntentFilter;
 import android.hardware.Camera;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.content.LocalBroadcastManager;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.MotionEvent;
+import android.view.SurfaceView;
+import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
@@ -25,21 +27,43 @@ import com.google.atap.tangoservice.TangoOutOfDateException;
 import com.google.atap.tangoservice.TangoPointCloudData;
 import com.google.atap.tangoservice.TangoPoseData;
 import com.google.atap.tangoservice.TangoXyzIjData;
+import com.ol.andon.reflex.cv.PointCloudBlobDetector;
 import com.ol.andon.reflex.services.MicroBitPairingService;
 
+import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase;
+import org.opencv.android.JavaCameraView;
+import org.opencv.android.LoaderCallbackInterface;
+import org.opencv.android.OpenCVLoader;
+import org.opencv.core.Core;
+import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfPoint;
+import org.opencv.core.Rect;
+import org.opencv.core.Scalar;
+import org.opencv.core.Size;
+import org.opencv.imgproc.Imgproc;
 
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
+import java.util.List;
 
-public class PhotoActivity extends AppCompatActivity  implements CameraBridgeViewBase.CvCameraViewListener2{
+public class PhotoActivity extends AppCompatActivity  implements CameraBridgeViewBase.CvCameraViewListener2, View.OnTouchListener{
     private static final String TAG = PhotoActivity.class.getSimpleName();
     private static final String READINGS_READY = TAG + ".READINGS_READY";
     private static final String POSE_READY = TAG + ".POSE_READY";
     private static final String PCL_READY = TAG + ".PCL_READY";
+    private Mat                  mRgba;
+    private Scalar               mBlobColorRgba;
+    private Scalar               mBlobColorHsv;
+    private Mat                  mSpectrum;
+    private Size SPECTRUM_SIZE;
+    private Scalar CONTOUR_COLOR;
+
+    private PointCloudBlobDetector mDetector;
     private Camera mCamera;
-    private TangoCameraPreview mCameraView;
+    private TangoCameraPreview mTangoCameraView;
+    private CameraBridgeViewBase mOpenCVCameraView;
     private MicroBitPairingService mMicroBitPairingService;
 
     private Tango mTango;
@@ -48,10 +72,22 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
     private LocalBroadcastManager broadcastManager;
     private BroadcastReceiver receiver;
 
-    // Used to load the 'native-lib' library on application startup.
-    static {
-        System.loadLibrary("native-lib");
-    }
+    private boolean mIsColorSelected = false;
+    private BaseLoaderCallback mOpenCVCallBack = new BaseLoaderCallback(this) {
+        @Override
+        public void onManagerConnected(int status) {
+            switch (status) {
+                case LoaderCallbackInterface.SUCCESS:
+                {
+                    Log.i(TAG, "OpenCV loaded successfully");
+                } break;
+                default:
+                {
+                    super.onManagerConnected(status);
+                } break;
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,24 +96,72 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         int permissionCheck = ContextCompat.checkSelfPermission(this,
                 Manifest.permission.CAMERA);
 //        mCamera = getCamera();
+
         // Example of a call to a native method
-        mCameraView = new TangoCameraPreview(this);
-        FrameLayout cv = (FrameLayout) findViewById(R.id.camera_view);
-        cv.addView(mCameraView);
-        mMicroBitPairingService = new MicroBitPairingService(this);
-        mMicroBitPairingService.connect();
+        System.loadLibrary("native-lib");
+        Log.i(TAG, "Trying to load OpenCV library");
+        if (!OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_2_4_2, this, mOpenCVCallBack))
+        {
+            Log.e(TAG, "Cannot connect to OpenCV Manager");
+        }
+        String cpp = stringFromJNI();
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setMessage(cpp);
+        AlertDialog dialog = builder.create();
+        //dialog.show();
+
+        mTangoCameraView = new TangoCameraPreview(this);
+        mTango = new Tango(PhotoActivity.this, new Runnable() {
+            @Override
+            public void run() {
+                synchronized (PhotoActivity.this){
+                    mTangoCameraView.connectToTangoCamera(mTango, TangoCameraIntrinsics.TANGO_CAMERA_DEPTH);
+                    mTangoConfig = setupTango(mTango);
+                    try{
+                        setTangoListeners();
+                    }
+                    catch(TangoErrorException e){
+                        Log.e(TAG, "Tango exception", e);
+                    }
+                    catch(SecurityException e){
+                        Log.e(TAG, "Security exception", e);
+                    }
+
+                    try{
+                        mTango.connect(mTangoConfig);
+                    }
+                    catch(TangoOutOfDateException e){
+                        Log.e(TAG, "Service out of date exception", e);
+                    }
+                    catch (TangoErrorException e){
+                        Log.e(TAG, "Error exception", e);
+                    }
+                }
+            }
+        });
+
+        mOpenCVCameraView = (JavaCameraView) findViewById(R.id.opencv_camera_view);
+        mOpenCVCameraView.setCameraIndex(TangoCameraIntrinsics.TANGO_CAMERA_COLOR);
+        mOpenCVCameraView.enableView();
+        mOpenCVCameraView.setVisibility(SurfaceView.VISIBLE);
+        mOpenCVCameraView.setCvCameraViewListener(this);
+        mOpenCVCameraView.setOnTouchListener(this);
+
+        //mMicroBitPairingService = new MicroBitPairingService(this);
+        //mMicroBitPairingService.connect();
 
     }
 
     @Override
     protected void onResume(){
         super.onResume();
-
+        mOpenCVCameraView.enableView();
         mTango = new Tango(PhotoActivity.this, new Runnable() {
             @Override
             public void run() {
                 synchronized (PhotoActivity.this){
-                    mCameraView.connectToTangoCamera(mTango, TangoCameraIntrinsics.TANGO_CAMERA_COLOR);
+                    mTangoCameraView.connectToTangoCamera(mTango, TangoCameraIntrinsics.TANGO_CAMERA_DEPTH);
                     mTangoConfig = setupTango(mTango);
                     try{
                         setTangoListeners();
@@ -159,10 +243,11 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
                 // Check if the frame available is for the camera we want and
                 // update its frame on the camera preview.
                 if (i == TangoCameraIntrinsics.TANGO_CAMERA_COLOR) {
-                    mCameraView.onFrameAvailable();
+                    mTangoCameraView.onFrameAvailable();
+
                 }
                 else if(i == TangoCameraIntrinsics.TANGO_CAMERA_DEPTH){
-                    mCameraView.onFrameAvailable();
+                    mTangoCameraView.onFrameAvailable();
                 }
             }
 
@@ -223,16 +308,97 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
 
     @Override
     public void onCameraViewStarted(int width, int height) {
+        mDetector = new PointCloudBlobDetector();
+        mRgba = new Mat(height, width, CvType.CV_8UC4);
+        mSpectrum = new Mat();
+        mBlobColorRgba = new Scalar(255);
+        mBlobColorHsv = new Scalar(255);
+        SPECTRUM_SIZE = new Size(200, 64);
+        CONTOUR_COLOR = new Scalar(255,0,0,255);
 
     }
 
     @Override
     public void onCameraViewStopped() {
-
+        mRgba.release();
     }
 
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
-        return inputFrame.rgba();
+        mRgba = inputFrame.rgba();
+
+        if (mIsColorSelected) {
+            mDetector.process(mRgba);
+            List<MatOfPoint> contours = mDetector.getContours();
+            Log.e(TAG, "Contours count: " + contours.size());
+            Imgproc.drawContours(mRgba, contours, -1, CONTOUR_COLOR);
+
+            Mat colorLabel = mRgba.submat(4, 68, 4, 68);
+            colorLabel.setTo(mBlobColorRgba);
+
+            Mat spectrumLabel = mRgba.submat(4, 4 + mSpectrum.rows(), 70, 70 + mSpectrum.cols());
+            mSpectrum.copyTo(spectrumLabel);
+        }
+
+        return mRgba;
     }
+
+    @Override
+    public boolean onTouch(View v, MotionEvent event) {
+        int cols = mRgba.cols();
+        int rows = mRgba.rows();
+
+        int xOffset = (this.mOpenCVCameraView.getWidth() - cols) / 2;
+        int yOffset = (this.mOpenCVCameraView.getHeight() - rows) / 2;
+
+        int x = (int)event.getX() - xOffset;
+        int y = (int)event.getY() - yOffset;
+
+        Log.i(TAG, "Touch image coordinates: (" + x + ", " + y + ")");
+
+        if ((x < 0) || (y < 0) || (x > cols) || (y > rows)) return false;
+
+        Rect touchedRect = new Rect();
+
+        touchedRect.x = (x>4) ? x-4 : 0;
+        touchedRect.y = (y>4) ? y-4 : 0;
+
+        touchedRect.width = (x+4 < cols) ? x + 4 - touchedRect.x : cols - touchedRect.x;
+        touchedRect.height = (y+4 < rows) ? y + 4 - touchedRect.y : rows - touchedRect.y;
+
+        Mat touchedRegionRgba = mRgba.submat(touchedRect);
+
+        Mat touchedRegionHsv = new Mat();
+        Imgproc.cvtColor(touchedRegionRgba, touchedRegionHsv, Imgproc.COLOR_RGB2HSV_FULL);
+
+        // Calculate average color of touched region
+        mBlobColorHsv = Core.sumElems(touchedRegionHsv);
+        int pointCount = touchedRect.width*touchedRect.height;
+        for (int i = 0; i < mBlobColorHsv.val.length; i++)
+            mBlobColorHsv.val[i] /= pointCount;
+
+        mBlobColorRgba = convertScalarHsv2Rgba(mBlobColorHsv);
+
+        Log.i(TAG, "Touched rgba color: (" + mBlobColorRgba.val[0] + ", " + mBlobColorRgba.val[1] +
+                ", " + mBlobColorRgba.val[2] + ", " + mBlobColorRgba.val[3] + ")");
+
+        mDetector.setHsvColor(mBlobColorHsv);
+
+        Imgproc.resize(mDetector.getSpectrum(), mSpectrum, SPECTRUM_SIZE);
+
+        mIsColorSelected = true;
+
+        touchedRegionRgba.release();
+        touchedRegionHsv.release();
+
+        return false; // don't need subsequent touch events
+    }
+    private Scalar convertScalarHsv2Rgba(Scalar hsvColor) {
+        Mat pointMatRgba = new Mat();
+        Mat pointMatHsv = new Mat(1, 1, CvType.CV_8UC3, hsvColor);
+        Imgproc.cvtColor(pointMatHsv, pointMatRgba, Imgproc.COLOR_HSV2RGB_FULL, 4);
+
+        return new Scalar(pointMatRgba.get(0, 0));
+    }
+
 }

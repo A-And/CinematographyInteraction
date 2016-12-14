@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
+    xmlns:opencv="http://schemas.android.com/apk/res-auto"
     android:id="@+id/activity_photo"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -10,27 +11,30 @@
     android:paddingTop="@dimen/camera_vertical_margin"
     tools:context="com.ol.andon.reflex.PhotoActivity">
 
-    <FrameLayout
-        android:layout_weight = "1"
-        android:id="@+id/camera_view"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content">
-
-
-    </FrameLayout>
+    <org.opencv.android.JavaCameraView
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent"
+        android:visibility="gone"
+        android:id="@+id/opencv_camera_view"
+        opencv:show_fps="true"  />
     <LinearLayout
         android:layout_weight = "1"
+        android:visibility="gone"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content">
         <TextView
             android:id = "@+id/sensor_readings"
             android:layout_height="wrap_content"
+            android:textColor="#FFFFFF"
             android:layout_width = "wrap_content"
             android:text="@string/readings_placeholder"/>
         <TextView
             android:id = "@+id/pcl_readings"
             android:layout_height="wrap_content"
             android:layout_width = "wrap_content"
-            android:text="@string/pcl_placeholder"/>
+            android:textColor="#FFFFFF"
+    android:text="@string/pcl_placeholder"/>
     </LinearLayout>
 </RelativeLayout>
+
+
