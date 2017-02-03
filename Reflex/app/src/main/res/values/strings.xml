@@ -2,5 +2,9 @@
     <string name="app_name">Reflex</string>
     <string name="readings_placeholder">Pose data here</string>
     <string name="pcl_placeholder">Point cloud data here</string>
+    <string name="send_button_label">Send</string>
+
+    <string name="connect_button_label">BLE Connect</string>
+    <string name="reconnect_button_label">Reconnect</string>
 
 </resources>

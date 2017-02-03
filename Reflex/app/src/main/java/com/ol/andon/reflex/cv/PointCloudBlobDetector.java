@@ -84,7 +84,7 @@ public class PointCloudBlobDetector {
         double maxArea = 0;
         Iterator<MatOfPoint> each = contours.iterator();
         while (each.hasNext()) {
-            MatOfPoint wrapper = each.next();
+             MatOfPoint wrapper = each.next();
             double area = Imgproc.contourArea(wrapper);
             if (area > maxArea)
                 maxArea = area;
