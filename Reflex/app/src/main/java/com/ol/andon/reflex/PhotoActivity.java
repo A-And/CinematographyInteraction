@@ -357,12 +357,19 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
 
             if(contours.size() > 0){
                 Rect bound = Imgproc.boundingRect(contours.get(0));
-                Point currCenter = new Point( bound.x + bound.width/2, bound.y + bound.height/2);
+                final Point currCenter = new Point( bound.x + bound.width/2, bound.y + bound.height/2);
 
                 double angle = Math.atan2(mainBoundCenter.x - currCenter.x, mainBoundCenter.y - currCenter.y) * 180 / PI;
                 if(angle > 20)
-                mMicroBitPairingService.writeXYZ((byte)angle, (byte)angle, (byte) 0);
+                //mMicroBitPairingService.writeXYZ((byte)angle, (byte)angle, (byte) 0);
                 mainBoundCenter = currCenter;
+                runOnUiThread(new Runnable (){
+                    @Override
+                    public void run(){
+                        TextView readings = (TextView) findViewById(R.id.pcl_readings);
+                        readings.setText("Center X: " + currCenter.x + " Y: " + currCenter.y);
+                    }
+                });
                 Imgproc.drawContours(mRgba, contours, -1, CONTOUR_COLOR);
                 Imgproc.rectangle(mRgba,new Point(bound.x, bound.y), new Point(bound.x + bound.width, bound.y + bound.height), BOUND_COLOR, 5);
             }

@@ -138,7 +138,7 @@ public class MicroBitCommsService {
         if(!mConnected) return;
         if(rxCharacteristic == null) return;
 
-        byte[] moveData = {0 , x, 1, y, 2, z};
+        byte[] moveData = {0 , x, 1, y, 2, z, ':'};
         rxCharacteristic.setValue(moveData);
         Log.i(TAG, "BLE write: " + mBluetoothGatt.writeCharacteristic(rxCharacteristic));
         Log.i(TAG, "BLE write: " + mBluetoothGatt.readCharacteristic(rxCharacteristic) +  " " + rxCharacteristic.getValue());
