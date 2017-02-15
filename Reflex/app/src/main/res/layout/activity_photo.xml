@@ -38,6 +38,13 @@
             android:text="@string/pcl_placeholder"
             android:textColor="@color/textLight" />
 
+        <TextView
+            android:id="@+id/tracking_readings"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/pcl_placeholder"
+            android:textColor="@color/textLight" />
+
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -45,25 +52,22 @@
             android:id="@+id/servoControl"
             >
 
-            <EditText
+            <SeekBar
                 android:textColor="@color/textLight"
                 android:id="@+id/xServoAngle"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:inputType="numberSigned" />
+                android:layout_height="wrap_content"  />
 
-            <EditText
+            <SeekBar
                 android:id="@+id/yServoAngle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:inputType="numberSigned"
-                android:textColor="@color/textLight"/>
+                 android:textColor="@color/textLight"/>
 
-            <EditText
+            <SeekBar
                 android:id="@+id/zForce"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:inputType="numberSigned"
                 android:textColor="@color/textLight"/>
 
             <Button

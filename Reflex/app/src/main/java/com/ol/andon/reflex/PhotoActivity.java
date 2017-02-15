@@ -14,6 +14,7 @@ import android.view.MotionEvent;
 import android.view.SurfaceView;
 import android.view.View;
 import android.widget.EditText;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
 import com.google.atap.tangoservice.Tango;
@@ -28,6 +29,7 @@ import com.google.atap.tangoservice.TangoPointCloudData;
 import com.google.atap.tangoservice.TangoPoseData;
 import com.google.atap.tangoservice.TangoXyzIjData;
 import com.ol.andon.reflex.cv.PointCloudBlobDetector;
+import com.ol.andon.reflex.services.BluetoothCommsService;
 import com.ol.andon.reflex.services.MicroBitCommsService;
 
 import org.opencv.android.BaseLoaderCallback;
@@ -59,27 +61,40 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
     private static final String READINGS_READY = TAG + ".READINGS_READY";
     private static final String POSE_READY = TAG + ".POSE_READY";
     private static final String PCL_READY = TAG + ".PCL_READY";
+
+
+    // OpenCV Settings
     private Mat                  mRgba;
     private Scalar               mBlobColorRgba;
     private Scalar               mBlobColorHsv;
     private Mat                  mSpectrum;
     private Size SPECTRUM_SIZE;
-    private Scalar CONTOUR_COLOR;
-    private Scalar BOUND_COLOR;
-    private Point mainBoundCenter;
+    private static Scalar CONTOUR_COLOR;
+    private static Scalar BOUND_COLOR;
+    private static Scalar CENTER_COLOUR;
+    private Point currentMainObjCenter;
+    private Point mainBoundLockPoint;
+
+    // CameraView Settings
+    private static final int CAM_HEIGHT = 800;
+    private static final int CAM_WIDTH = 1280;
 
     private PointCloudBlobDetector mDetector;
     private TangoCameraPreview mTangoCameraView;
     private CameraBridgeViewBase mOpenCVCameraView;
     private MicroBitCommsService mMicroBitPairingService;
 
+    // Tango Setup
     private Tango mTango;
     private TangoConfig mTangoConfig;
 
-    private LocalBroadcastManager broadcastManager;
-    private BroadcastReceiver receiver;
-    private int frame = 0;
+    // Current values
+    private int mX;
+    private int mY;
+    private int mZ;
     private boolean mIsColorSelected = false;
+    private boolean mOpenCVLoaded = false;
+
     private BaseLoaderCallback mOpenCVCallBack = new BaseLoaderCallback(this) {
         @Override
         public void onManagerConnected(int status) {
@@ -87,11 +102,12 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
                 case LoaderCallbackInterface.SUCCESS:
                 {
                     Log.i(TAG, "OpenCV loaded successfully");
-
+                    mOpenCVLoaded = true;
                     mOpenCVCameraView = (JavaCameraView) findViewById(R.id.opencv_camera_view);
                     Camera.CameraInfo cameraInfo = new Camera.CameraInfo();
                     mOpenCVCameraView.setCameraIndex(cameraInfo.CAMERA_FACING_BACK);
                     mOpenCVCameraView.enableView();
+                    mOpenCVCameraView.setMaxFrameSize(CAM_HEIGHT, CAM_WIDTH);
 
                     mOpenCVCameraView.setVisibility(SurfaceView.VISIBLE);
 
@@ -111,7 +127,6 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         setContentView(R.layout.activity_photo);
         int permissionCheck = ContextCompat.checkSelfPermission(this,
                 Manifest.permission.CAMERA);
-//        mCamera = getCamera();
 
         System.loadLibrary("native-lib");
         Log.i(TAG, "Trying to load OpenCV library");
@@ -119,12 +134,16 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         {
             Log.e(TAG, "Cannot connect to OpenCV Manager");
         }
-        String cpp = stringFromJNI();
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setMessage(cpp);
-        AlertDialog dialog = builder.create();
-        //dialog.show();
+        // Set up UI seekbars
+        SeekBar xSb = (SeekBar) findViewById(R.id.xServoAngle);
+        xSb.setMax(180);
+
+        SeekBar ySb = (SeekBar) findViewById(R.id.xServoAngle);
+        ySb.setMax(180);
+
+        SeekBar zSb = (SeekBar) findViewById(R.id.xServoAngle);
+        zSb.setMax(180);
 
         mTangoCameraView = new TangoCameraPreview(this);
         mTango = new Tango(PhotoActivity.this, new Runnable() {
@@ -159,7 +178,6 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
 
         mOpenCVCameraView.setCvCameraViewListener(this);
         mOpenCVCameraView.setOnTouchListener(this);
-
         mMicroBitPairingService = new MicroBitCommsService(this);
         mMicroBitPairingService.connect();
 
@@ -209,13 +227,13 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
     @Override
     protected void onStart(){
         super.onStart();
-        LocalBroadcastManager.getInstance(this).registerReceiver(receiver,new IntentFilter(this.READINGS_READY));
     }
     @Override
     protected void onStop(){
         super.onStop();
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver);
-        mMicroBitPairingService.disconnect();
+
+        if(mMicroBitPairingService != null)
+            mMicroBitPairingService.disconnect();
     }
 
     /**
@@ -335,7 +353,8 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         mBlobColorRgba = new Scalar(255);
         mBlobColorHsv = new Scalar(255);
         SPECTRUM_SIZE = new Size(200, 64);
-        CONTOUR_COLOR = new Scalar(255,0,0,255);
+        CENTER_COLOUR = new Scalar(255,0,0,255);
+        CONTOUR_COLOR = new Scalar(0,0,255,255);
         BOUND_COLOR = new Scalar(255,0,176,12);
 
     }
@@ -350,32 +369,48 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         mRgba = inputFrame.rgba();
 
         if (mIsColorSelected) {
-            frame++;
-            frame %= 20;
             mDetector.process(mRgba);
             List<MatOfPoint> contours = mDetector.getContours();
+
 
             if(contours.size() > 0){
                 Rect bound = Imgproc.boundingRect(contours.get(0));
                 final Point currCenter = new Point( bound.x + bound.width/2, bound.y + bound.height/2);
-
-                double angle = Math.atan2(mainBoundCenter.x - currCenter.x, mainBoundCenter.y - currCenter.y) * 180 / PI;
-                if(angle > 20)
                 //mMicroBitPairingService.writeXYZ((byte)angle, (byte)angle, (byte) 0);
-                mainBoundCenter = currCenter;
+
+                if(mainBoundLockPoint == null){
+                    mainBoundLockPoint = currCenter;
+                }
+
+                if(currentMainObjCenter == null){
+                    currentMainObjCenter = currCenter;
+                }
+                Imgproc.circle(mRgba,mainBoundLockPoint, 10, CENTER_COLOUR);
+
+                final double referenceX = mainBoundLockPoint.x;
+                final double referenceY = mainBoundLockPoint.y;
+
+                double xAngle = -1.0;
+                // Directly proportional to angle from center
+                if(currCenter.x != 0)
+                    xAngle = currCenter.x < referenceX ? 180 - (90 * (referenceX - currCenter.x)/referenceX): 90 * (CAM_WIDTH - currCenter.x)/CAM_WIDTH;
+                final double dispX = xAngle;
                 runOnUiThread(new Runnable (){
                     @Override
                     public void run(){
-                        TextView readings = (TextView) findViewById(R.id.pcl_readings);
-                        readings.setText("Center X: " + currCenter.x + " Y: " + currCenter.y);
+                        TextView readings = (TextView) findViewById(R.id.tracking_readings);
+                        //readings.setText("Center X: " + currCenter.x + " Y: " + currCenter.y + "| Dif X: " + (referenceX - currCenter.x ) + " Y:" + (referenceY- currCenter.y ));
+                        readings.setText("Center X: " + currCenter.x + " Y: " + currCenter.y + "| Angle: " + dispX);
                     }
                 });
+                currentMainObjCenter = currCenter;
+
                 Imgproc.drawContours(mRgba, contours, -1, CONTOUR_COLOR);
                 Imgproc.rectangle(mRgba,new Point(bound.x, bound.y), new Point(bound.x + bound.width, bound.y + bound.height), BOUND_COLOR, 5);
+                Imgproc.circle(mRgba,currCenter, 10, CENTER_COLOUR);
             }
             Mat colorLabel = mRgba.submat(4, 68, 4, 68);
             colorLabel.setTo(mBlobColorRgba);
-
             Mat spectrumLabel = mRgba.submat(4, 4 + mSpectrum.rows(), 70, 70 + mSpectrum.cols());
             mSpectrum.copyTo(spectrumLabel);
         }
@@ -427,53 +462,39 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         Imgproc.resize(mDetector.getSpectrum(), mSpectrum, SPECTRUM_SIZE);
 
         mIsColorSelected = true;
-        mainBoundCenter = new Point(0,0);
+        mainBoundLockPoint = null;
         touchedRegionRgba.release();
         touchedRegionHsv.release();
 
         return false; // don't need subsequent touch events
     }
-    public void mbConnect(View v){
-        mMicroBitPairingService.connect();
-    }
     public void mbSendXY(View v) {
         if (!mMicroBitPairingService.isConnected()) mMicroBitPairingService.connect();
-        EditText xAngle = (EditText) findViewById(R.id.xServoAngle);
-        EditText yAngle = (EditText) findViewById(R.id.yServoAngle);
-        try {
+        SeekBar xAngle = (SeekBar) findViewById(R.id.xServoAngle);
+        SeekBar yAngle = (SeekBar) findViewById(R.id.yServoAngle);
 
-            int x = Integer.parseInt(xAngle.getText().toString());
-            if (x < 0 || x > 180) return;
+        int x =  xAngle.getProgress();
 
-            int y = Integer.parseInt(yAngle.getText().toString());
-            if (y < 0 || y > 180) return;
+        int y = yAngle.getProgress();
 
-            mMicroBitPairingService.writeXY((byte) (x & 0xff), (byte) (y & 0xff));
-        }
-        catch (IllegalFormatException e){
-            return;
-        }
+
+        mMicroBitPairingService.writeXY((byte) (x), (byte) (y ));
     }
 
     public void mbSendXYZ(View v) {
         if (!mMicroBitPairingService.isConnected()) mMicroBitPairingService.connect();
-        EditText xAngle = (EditText) findViewById(R.id.xServoAngle);
-        EditText yAngle = (EditText) findViewById(R.id.yServoAngle);
-        EditText zForce = (EditText) findViewById(R.id.zForce);
+        SeekBar xAngle = (SeekBar) findViewById(R.id.xServoAngle);
+        SeekBar yAngle = (SeekBar) findViewById(R.id.yServoAngle);
+        SeekBar zForce = (SeekBar) findViewById(R.id.zForce);
 
-        try {
+            int x =  xAngle.getProgress();
 
-            int x = Integer.parseInt(xAngle.getText().toString());
-            if (x < 0 || x > 180) return;
+            int y = yAngle.getProgress();
 
-            int y = Integer.parseInt(yAngle.getText().toString());
-            if (y < 0 || y > 180) return;
+            int z = zForce.getProgress();
 
-             int z = Integer.parseInt(zForce.getText().toString());
-            mMicroBitPairingService.writeXYZ((byte) (x & 0xff), (byte) (y & 0xff), (byte) (z & 0xff));
-        } catch (NumberFormatException e) {
-            return;
-        }
+            mMicroBitPairingService.writeXYZ((byte) (x), (byte) (y ), (byte) (z));
+
     }
 
     private Scalar convertScalarHsv2Rgba(Scalar hsvColor) {

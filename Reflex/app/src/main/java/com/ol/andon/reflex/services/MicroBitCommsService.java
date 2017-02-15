@@ -28,7 +28,9 @@ public class MicroBitCommsService {
 //    public final static  String PINADCONFIGURATION_CHARACTERISTIC_UUID = "e95d5899-251d-470a-a062-fa1922dfa9a8";
 //    public final static String PINIOCONFIGURATION_CHARACTERISTIC_UUID = "e95db9fe-251d-470a-a062-fa1922dfa9a8";
 
-
+    private int currentX = 0;
+    private int currentY = 0;
+    private int currentZ = 0;
 
     public static String UARTSERVICE_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
     public static String UART_TX_CHARACTERISTIC_UUID ="6e400002-b5a3-f393-e0a9-e50e24dcca9e";
@@ -138,7 +140,7 @@ public class MicroBitCommsService {
         if(!mConnected) return;
         if(rxCharacteristic == null) return;
 
-        byte[] moveData = {0 , x, 1, y, 2, z, ':'};
+        byte[] moveData = {0 , x, 1, y, 2, z};
         rxCharacteristic.setValue(moveData);
         Log.i(TAG, "BLE write: " + mBluetoothGatt.writeCharacteristic(rxCharacteristic));
         Log.i(TAG, "BLE write: " + mBluetoothGatt.readCharacteristic(rxCharacteristic) +  " " + rxCharacteristic.getValue());
@@ -165,7 +167,8 @@ public class MicroBitCommsService {
     }
 
     public void disconnect(){
-        mBluetoothGatt.disconnect();
+        if(mConnected)
+            mBluetoothGatt.disconnect();
 
     }
 
