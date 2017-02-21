@@ -42,7 +42,7 @@
             android:id="@+id/tracking_readings"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/pcl_placeholder"
+            android:text="@string/tracking_placeholder"
             android:textColor="@color/textLight" />
 
         <LinearLayout

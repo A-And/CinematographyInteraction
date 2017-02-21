@@ -92,6 +92,7 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
     private int mX;
     private int mY;
     private int mZ;
+    private int frameCounter;
     private boolean mIsColorSelected = false;
     private boolean mOpenCVLoaded = false;
 
@@ -391,19 +392,27 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
                 final double referenceY = mainBoundLockPoint.y;
 
                 double xAngle = -1.0;
+                double yAngle = -1.0;
                 // Directly proportional to angle from center
                 if(currCenter.x != 0)
-                    xAngle = currCenter.x < referenceX ? 180 - (90 * (referenceX - currCenter.x)/referenceX): 90 * (CAM_WIDTH - currCenter.x)/CAM_WIDTH;
-                final double dispX = xAngle;
+                    mX =(int)( currCenter.x < referenceX ? 90 + 90 * (referenceX - currCenter.x)/referenceX: 90 * ((CAM_WIDTH ) - (currCenter.x ))/(CAM_WIDTH - referenceX));
+                if(currCenter.y != 0)
+                    mY =(int)( currCenter.y < referenceY ? 90 + 90 * (referenceY - currCenter.y)/referenceY: 90 * (CAM_HEIGHT - currCenter.y)/(CAM_HEIGHT - referenceY));
+
+                final int dispX = mX;
+                final int dispY = mY;
                 runOnUiThread(new Runnable (){
                     @Override
                     public void run(){
                         TextView readings = (TextView) findViewById(R.id.tracking_readings);
                         //readings.setText("Center X: " + currCenter.x + " Y: " + currCenter.y + "| Dif X: " + (referenceX - currCenter.x ) + " Y:" + (referenceY- currCenter.y ));
-                        readings.setText("Center X: " + currCenter.x + " Y: " + currCenter.y + "| Angle: " + dispX);
+                        readings.setText("Center X: " + currCenter.x + " Y: " + currCenter.y + "| X Angle: " + dispX + " Y Angle: " + dispY);
                     }
                 });
                 currentMainObjCenter = currCenter;
+                frameCounter++;
+                if((frameCounter%= 60) == 0)
+                    mMicroBitPairingService.writeXY((byte) dispX, (byte) yAngle);
 
                 Imgproc.drawContours(mRgba, contours, -1, CONTOUR_COLOR);
                 Imgproc.rectangle(mRgba,new Point(bound.x, bound.y), new Point(bound.x + bound.width, bound.y + bound.height), BOUND_COLOR, 5);
