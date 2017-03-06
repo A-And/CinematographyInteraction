@@ -379,7 +379,9 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
 
 
             if(contours.size() > 0){
-                Rect bound = Imgproc.boundingRect(contours.get(0));
+                MatOfPoint blurredBounds = new MatOfPoint();
+                Imgproc.blur(contours.get(0), blurredBounds, new Size(3,3));
+                Rect bound = Imgproc.boundingRect(blurredBounds);
 
                 Imgproc.rectangle(mRgba, new Point(bound.x, bound.y), new Point(bound.x + bound.width, bound.y + bound.height),CONTOUR_COLOR, 10);
                 final Point currCenter = new Point( bound.x + bound.width/2, bound.y + bound.height/2);
@@ -399,9 +401,9 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
 
                 Log.d(TAG, "Width " + CAM_WIDTH + " X Height: " + CAM_HEIGHT);
                 if(currCenter.x != 0)
-                    mX =(int)( currCenter.x < referenceX ? 90 + 90 * (referenceX - currCenter.x)/referenceX: 90 * ((CAM_HEIGHT ) - (currCenter.x ))/(CAM_HEIGHT));
+                    mX =(int)( 90 + 90 * (referenceX - currCenter.x)/referenceX);
                 if(currCenter.y != 0)
-                    mY =(int)( currCenter.y < referenceY ? 90 + 90 * (referenceY - currCenter.y)/referenceY: 90 * (CAM_HEIGHT - currCenter.y)/CAM_HEIGHT );
+                    mY =(int)( 90 + 90 * (referenceY - currCenter.y)/referenceY);
 
                 final int dispX = mX;
                 final int dispY = mY;
@@ -436,7 +438,7 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
     @Override
     public boolean onTouch(View v, MotionEvent event) {
         int cols = mRgba.cols();
-        int rows = mRgba.rows();    
+        int rows = mRgba.rows();
         CAM_HEIGHT = mOpenCVCameraView.getHeight();
         CAM_WIDTH = mOpenCVCameraView.getWidth();
 
