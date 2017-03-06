@@ -3,8 +3,8 @@
     xmlns:opencv="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/activity_photo"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_width="fill_parent"
+    android:layout_height="fill_parent"
     android:paddingBottom="@dimen/camera_vertical_margin"
     android:paddingLeft="@dimen/camera_horizontal_margin"
     android:paddingRight="@dimen/camera_horizontal_margin"
@@ -13,8 +13,8 @@
 
     <org.opencv.android.JavaCameraView
         android:id="@+id/opencv_camera_view"
-        android:layout_width="fill_parent"
-        android:layout_height="fill_parent"
+        android:layout_width="1920dp"
+        android:layout_height="960dp"
         android:visibility="gone"
         opencv:show_fps="true" />
 
@@ -55,18 +55,18 @@
             <SeekBar
                 android:textColor="@color/textLight"
                 android:id="@+id/xServoAngle"
-                android:layout_width="wrap_content"
+                android:layout_width="fill_parent"
                 android:layout_height="wrap_content"  />
 
             <SeekBar
                 android:id="@+id/yServoAngle"
-                android:layout_width="wrap_content"
+                android:layout_width="fill_parent"
                 android:layout_height="wrap_content"
                  android:textColor="@color/textLight"/>
 
             <SeekBar
                 android:id="@+id/zForce"
-                android:layout_width="wrap_content"
+                android:layout_width="fill_parent"
                 android:layout_height="wrap_content"
                 android:textColor="@color/textLight"/>
 

@@ -239,7 +239,7 @@ public class JavaCameraView extends CameraBridgeViewBase implements PreviewCallb
          * 2. We need to start thread which will be getting frames
          */
         /* First step - initialize camera connection */
-        Log.d(TAG, "Connecting to camera");
+        Log.d(TAG, "Connecting to camera with size" + width + " x " + height);
         if (!initializeCamera(width, height))
             return false;
 

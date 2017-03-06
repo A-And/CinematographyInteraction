@@ -7,11 +7,18 @@ import java.util.List;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfFloat;
+import org.opencv.core.MatOfInt;
 import org.opencv.core.MatOfPoint;
+import org.opencv.core.Point;
+import org.opencv.core.Rect;
+import org.opencv.core.RotatedRect;
 import org.opencv.core.Scalar;
+import org.opencv.core.TermCriteria;
 import org.opencv.imgproc.Imgproc;
+import org.opencv.video.Video;
 
-public class PointCloudBlobDetector {
+public class BlobDetector {
     // Lower and Upper bounds for range checking in HSV color space
     private Scalar mLowerBound = new Scalar(0);
     private Scalar mUpperBound = new Scalar(0);
@@ -21,13 +28,17 @@ public class PointCloudBlobDetector {
     private Scalar mColorRadius = new Scalar(25,50,50,0);
     private Mat mSpectrum = new Mat();
     private List<MatOfPoint> mContours = new ArrayList<MatOfPoint>();
-
+    // Rectangle to bound movement during CamShift
+    private RotatedRect mBoundingRect = new RotatedRect();
+    private Rect mWindow;
     // Cache
     Mat mPyrDownMat = new Mat();
     Mat mHsvMat = new Mat();
     Mat mMask = new Mat();
     Mat mDilatedMask = new Mat();
     Mat mHierarchy = new Mat();
+
+
 
     public void setColorRadius(Scalar radius) {
         mColorRadius = radius;
@@ -75,7 +86,6 @@ public class PointCloudBlobDetector {
 
         Core.inRange(mHsvMat, mLowerBound, mUpperBound, mMask);
         Imgproc.dilate(mMask, mDilatedMask, new Mat());
-
         List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
 
         Imgproc.findContours(mDilatedMask, contours, mHierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
@@ -100,9 +110,17 @@ public class PointCloudBlobDetector {
                 mContours.add(contour);
             }
         }
+
+        if(mContours.size() > 0){
+
+        }
+
     }
 
     public List<MatOfPoint> getContours() {
         return mContours;
     }
+    public RotatedRect getCamshiftRect(){return mBoundingRect;}
+    public Rect getCamshiftWindow(){return mWindow;}
+
 }

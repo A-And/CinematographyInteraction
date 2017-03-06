@@ -1,5 +1,5 @@
 apply plugin: 'com.android.application'
-apply plugin: 'cpp'
+//apply plugin: 'cpp'
 android {
     compileSdkVersion 24
     buildToolsVersion "25.0.0"
@@ -22,11 +22,11 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
-    externalNativeBuild {
-        cmake {
-            path "CMakeLists.txt"
-        }
-    }
+//    externalNativeBuild {
+//        cmake {
+//            path "CMakeLists.txt"
+//        }
+//    }
 }
 
 repositories {

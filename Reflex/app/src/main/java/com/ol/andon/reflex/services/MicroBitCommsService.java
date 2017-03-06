@@ -91,6 +91,7 @@ public class MicroBitCommsService {
         if(mBluetoothAdapter == null || !mBluetoothAdapter.isEnabled()){
             Intent enableBltIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
             activity.startActivityForResult(enableBltIntent, REQUEST_ENABLE_BT);
+            res = true;
         }
         scanForDevice();
         return res;
@@ -125,25 +126,34 @@ public class MicroBitCommsService {
         mConnected = rxCharacteristic != null;
     }
 
-    public void writeXY(byte x, byte y){
+    public void writeXY(int x, int y){
         if(!mConnected) return;
         if(rxCharacteristic == null) return;
 
-        byte[] moveData = {0 , x, 1, y};
+        byte[] moveData = {(byte) (x  ), ':', (byte) (y ), ':' };
         rxCharacteristic.setValue(moveData);
-        Log.i(TAG, "BLE write: " + mBluetoothGatt.writeCharacteristic(rxCharacteristic));
-        Log.i(TAG, "BLE write: " + mBluetoothGatt.readCharacteristic(rxCharacteristic) +  " " + rxCharacteristic.getValue());
-
+        mBluetoothGatt.writeCharacteristic(rxCharacteristic);
+        Log.v(TAG, "BLE write: " + new String(moveData));
     }
 
-    public void writeXYZ(byte x, byte y, byte z){
-        if(!mConnected) return;
-        if(rxCharacteristic == null) return;
+    public void writeXYZ(int x, int y, int z){
+        if(!mConnected){
+            Log.v(TAG, "BLE not Connected");
 
-        byte[] moveData = {0 , x, 1, y, 2, z};
-        rxCharacteristic.setValue(moveData);
-        Log.i(TAG, "BLE write: " + mBluetoothGatt.writeCharacteristic(rxCharacteristic));
-        Log.i(TAG, "BLE write: " + mBluetoothGatt.readCharacteristic(rxCharacteristic) +  " " + rxCharacteristic.getValue());
+            return;
+
+        }
+        if(rxCharacteristic == null){
+            Log.v(TAG, "Service not Connected");
+            return;
+        }
+
+        byte[] moveData = {0 ,(byte) (x & 0xFF) , 1, (byte) (y & 0xFF) , 2, (byte) (z & 0xFF) };
+        //byte[] moveData = {(byte) (x  ), ':', (byte) (y ), ':' };
+
+        boolean res = rxCharacteristic.setValue(moveData);
+        mBluetoothGatt.writeCharacteristic(rxCharacteristic);
+        Log.v(TAG, "BLE write: " + new String(moveData));
 
     }
 
@@ -154,7 +164,7 @@ public class MicroBitCommsService {
         byte[] xData = {0x00, 0x00};
         rxCharacteristic.setValue(xData);
         Log.i(TAG, "BLE write: " + mBluetoothGatt.writeCharacteristic(rxCharacteristic));
-        Log.i(TAG, "BLE write: " + mBluetoothGatt.readCharacteristic(rxCharacteristic) +  " " + rxCharacteristic.getValue());
+        Log.i(TAG, "BLE write: " + mBluetoothGatt.readCharacteristic(rxCharacteristic) +  " " + rxCharacteristic.getValue().toString());
     }
     public void write1(){
         if(!mConnected) return;

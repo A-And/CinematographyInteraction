@@ -1,21 +1,18 @@
 package com.ol.andon.reflex;
 
 import android.Manifest;
-import android.content.BroadcastReceiver;
-import android.content.IntentFilter;
 import android.hardware.Camera;
 import android.os.Bundle;
 import android.support.v4.content.ContextCompat;
-import android.support.v4.content.LocalBroadcastManager;
-import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.SurfaceView;
 import android.view.View;
-import android.widget.EditText;
+import android.view.WindowManager;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.google.atap.tangoservice.Tango;
 import com.google.atap.tangoservice.TangoCameraIntrinsics;
@@ -28,8 +25,7 @@ import com.google.atap.tangoservice.TangoOutOfDateException;
 import com.google.atap.tangoservice.TangoPointCloudData;
 import com.google.atap.tangoservice.TangoPoseData;
 import com.google.atap.tangoservice.TangoXyzIjData;
-import com.ol.andon.reflex.cv.PointCloudBlobDetector;
-import com.ol.andon.reflex.services.BluetoothCommsService;
+import com.ol.andon.reflex.cv.BlobDetector;
 import com.ol.andon.reflex.services.MicroBitCommsService;
 
 import org.opencv.android.BaseLoaderCallback;
@@ -43,24 +39,24 @@ import org.opencv.core.Mat;
 import org.opencv.core.MatOfPoint;
 import org.opencv.core.Point;
 import org.opencv.core.Rect;
+import org.opencv.core.RotatedRect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
+import org.opencv.core.TermCriteria;
 import org.opencv.imgproc.Imgproc;
+import org.opencv.video.Video;
 
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
-import java.util.IllegalFormatException;
 import java.util.List;
-
-import static java.lang.Math.PI;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class PhotoActivity extends AppCompatActivity  implements CameraBridgeViewBase.CvCameraViewListener2, View.OnTouchListener{
 
 
     private static final String TAG = PhotoActivity.class.getSimpleName();
-    private static final String READINGS_READY = TAG + ".READINGS_READY";
-    private static final String POSE_READY = TAG + ".POSE_READY";
-    private static final String PCL_READY = TAG + ".PCL_READY";
 
 
     // OpenCV Settings
@@ -76,10 +72,10 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
     private Point mainBoundLockPoint;
 
     // CameraView Settings
-    private static final int CAM_HEIGHT = 800;
-    private static final int CAM_WIDTH = 1280;
+    private static int CAM_HEIGHT = 960;
+    private static int CAM_WIDTH = 1280;
 
-    private PointCloudBlobDetector mDetector;
+    private BlobDetector mDetector;
     private TangoCameraPreview mTangoCameraView;
     private CameraBridgeViewBase mOpenCVCameraView;
     private MicroBitCommsService mMicroBitPairingService;
@@ -105,10 +101,9 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
                     Log.i(TAG, "OpenCV loaded successfully");
                     mOpenCVLoaded = true;
                     mOpenCVCameraView = (JavaCameraView) findViewById(R.id.opencv_camera_view);
-                    Camera.CameraInfo cameraInfo = new Camera.CameraInfo();
-                    mOpenCVCameraView.setCameraIndex(cameraInfo.CAMERA_FACING_BACK);
+                    mOpenCVCameraView.setCameraIndex(TangoCameraIntrinsics.TANGO_CAMERA_COLOR);
+
                     mOpenCVCameraView.enableView();
-                    mOpenCVCameraView.setMaxFrameSize(CAM_HEIGHT, CAM_WIDTH);
 
                     mOpenCVCameraView.setVisibility(SurfaceView.VISIBLE);
 
@@ -122,14 +117,25 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         }
     };
 
+    private Runnable updateServoValues = new Runnable(){
+        @Override
+        public void run() {
+            if(mMicroBitPairingService != null && mMicroBitPairingService.isConnected())
+                mMicroBitPairingService.writeXYZ(mX , mY, 0 );
+        }
+    };
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_photo);
+
         int permissionCheck = ContextCompat.checkSelfPermission(this,
                 Manifest.permission.CAMERA);
 
-        System.loadLibrary("native-lib");
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN);
+
+       // System.loadLibrary("native-lib");
         Log.i(TAG, "Trying to load OpenCV library");
         if (!OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_2_4_10, this, mOpenCVCallBack))
         {
@@ -145,7 +151,6 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
 
         SeekBar zSb = (SeekBar) findViewById(R.id.xServoAngle);
         zSb.setMax(180);
-
         mTangoCameraView = new TangoCameraPreview(this);
         mTango = new Tango(PhotoActivity.this, new Runnable() {
             @Override
@@ -176,7 +181,6 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
             }
         });
         mOpenCVCameraView = (JavaCameraView) findViewById(R.id.opencv_camera_view);
-
         mOpenCVCameraView.setCvCameraViewListener(this);
         mOpenCVCameraView.setOnTouchListener(this);
         mMicroBitPairingService = new MicroBitCommsService(this);
@@ -241,7 +245,7 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
      * A native method that is implemented by the 'native-lib' native library,
      * which is packaged with this application.
      */
-    public native String stringFromJNI();
+    //public native String stringFromJNI(int arg);
 
     public static Camera getCamera() {
         Camera c = null;
@@ -348,7 +352,7 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
 
     @Override
     public void onCameraViewStarted(int width, int height) {
-        mDetector = new PointCloudBlobDetector();
+        mDetector = new BlobDetector();
         mRgba = new Mat(height, width, CvType.CV_8UC4);
         mSpectrum = new Mat();
         mBlobColorRgba = new Scalar(255);
@@ -376,6 +380,8 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
 
             if(contours.size() > 0){
                 Rect bound = Imgproc.boundingRect(contours.get(0));
+
+                Imgproc.rectangle(mRgba, new Point(bound.x, bound.y), new Point(bound.x + bound.width, bound.y + bound.height),CONTOUR_COLOR, 10);
                 final Point currCenter = new Point( bound.x + bound.width/2, bound.y + bound.height/2);
                 //mMicroBitPairingService.writeXYZ((byte)angle, (byte)angle, (byte) 0);
 
@@ -386,18 +392,16 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
                 if(currentMainObjCenter == null){
                     currentMainObjCenter = currCenter;
                 }
-                Imgproc.circle(mRgba,mainBoundLockPoint, 10, CENTER_COLOUR);
+//                Imgproc.circle(mRgba,mainBoundLockPoint, 10, CENTER_COLOUR);
 
                 final double referenceX = mainBoundLockPoint.x;
                 final double referenceY = mainBoundLockPoint.y;
 
-                double xAngle = -1.0;
-                double yAngle = -1.0;
-                // Directly proportional to angle from center
+                Log.d(TAG, "Width " + CAM_WIDTH + " X Height: " + CAM_HEIGHT);
                 if(currCenter.x != 0)
-                    mX =(int)( currCenter.x < referenceX ? 90 + 90 * (referenceX - currCenter.x)/referenceX: 90 * ((CAM_WIDTH ) - (currCenter.x ))/(CAM_WIDTH - referenceX));
+                    mX =(int)( currCenter.x < referenceX ? 90 + 90 * (referenceX - currCenter.x)/referenceX: 90 * ((CAM_HEIGHT ) - (currCenter.x ))/(CAM_HEIGHT));
                 if(currCenter.y != 0)
-                    mY =(int)( currCenter.y < referenceY ? 90 + 90 * (referenceY - currCenter.y)/referenceY: 90 * (CAM_HEIGHT - currCenter.y)/(CAM_HEIGHT - referenceY));
+                    mY =(int)( currCenter.y < referenceY ? 90 + 90 * (referenceY - currCenter.y)/referenceY: 90 * (CAM_HEIGHT - currCenter.y)/CAM_HEIGHT );
 
                 final int dispX = mX;
                 final int dispY = mY;
@@ -410,14 +414,16 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
                     }
                 });
                 currentMainObjCenter = currCenter;
-                frameCounter++;
-                if((frameCounter%= 60) == 0)
-                    mMicroBitPairingService.writeXY((byte) dispX, (byte) yAngle);
+                frameCounter = (frameCounter + 1) % 2;
+
+                if(frameCounter == 0)
+                    mMicroBitPairingService.writeXYZ(mX ,mY, 0);
 
                 Imgproc.drawContours(mRgba, contours, -1, CONTOUR_COLOR);
-                Imgproc.rectangle(mRgba,new Point(bound.x, bound.y), new Point(bound.x + bound.width, bound.y + bound.height), BOUND_COLOR, 5);
                 Imgproc.circle(mRgba,currCenter, 10, CENTER_COLOUR);
+                Imgproc.circle(mRgba,mainBoundLockPoint, 10, CENTER_COLOUR);
             }
+
             Mat colorLabel = mRgba.submat(4, 68, 4, 68);
             colorLabel.setTo(mBlobColorRgba);
             Mat spectrumLabel = mRgba.submat(4, 4 + mSpectrum.rows(), 70, 70 + mSpectrum.cols());
@@ -430,7 +436,9 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
     @Override
     public boolean onTouch(View v, MotionEvent event) {
         int cols = mRgba.cols();
-        int rows = mRgba.rows();
+        int rows = mRgba.rows();    
+        CAM_HEIGHT = mOpenCVCameraView.getHeight();
+        CAM_WIDTH = mOpenCVCameraView.getWidth();
 
         int xOffset = (this.mOpenCVCameraView.getWidth() - cols) / 2;
         int yOffset = (this.mOpenCVCameraView.getHeight() - rows) / 2;
@@ -472,6 +480,11 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
 
         mIsColorSelected = true;
         mainBoundLockPoint = null;
+
+        //ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+
+        //scheduler.scheduleAtFixedRate(updateServoValues, 0, 5, TimeUnit.SECONDS);
+
         touchedRegionRgba.release();
         touchedRegionHsv.release();
 
@@ -487,10 +500,14 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         int y = yAngle.getProgress();
 
 
-        mMicroBitPairingService.writeXY((byte) (x), (byte) (y ));
+        mMicroBitPairingService.writeXY((x),(y ));
     }
-
+    public void mbConnect(View v){
+        mMicroBitPairingService.connect();
+    }
     public void mbSendXYZ(View v) {
+//        this.mbSendXY(v);
+
         if (!mMicroBitPairingService.isConnected()) mMicroBitPairingService.connect();
         SeekBar xAngle = (SeekBar) findViewById(R.id.xServoAngle);
         SeekBar yAngle = (SeekBar) findViewById(R.id.yServoAngle);
@@ -502,7 +519,7 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
 
             int z = zForce.getProgress();
 
-            mMicroBitPairingService.writeXYZ((byte) (x), (byte) (y ), (byte) (z));
+            mMicroBitPairingService.writeXYZ( (x), (y ),  (z));
 
     }
 
