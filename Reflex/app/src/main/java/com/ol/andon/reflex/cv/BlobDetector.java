@@ -18,7 +18,7 @@ import org.opencv.core.TermCriteria;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.video.Video;
 
-public class BlobDetector {
+public class BlobDetector implements IDetector{
     // Lower and Upper bounds for range checking in HSV color space
     private Scalar mLowerBound = new Scalar(0);
     private Scalar mUpperBound = new Scalar(0);
@@ -28,9 +28,9 @@ public class BlobDetector {
     private Scalar mColorRadius = new Scalar(25,50,50,0);
     private Mat mSpectrum = new Mat();
     private List<MatOfPoint> mContours = new ArrayList<MatOfPoint>();
-    // Rectangle to bound movement during CamShift
-    private RotatedRect mBoundingRect = new RotatedRect();
-    private Rect mWindow;
+    // Largest contour by area
+    private MatOfPoint mLargestContour;
+
     // Cache
     Mat mPyrDownMat = new Mat();
     Mat mHsvMat = new Mat();
@@ -78,11 +78,11 @@ public class BlobDetector {
         mMinContourArea = area;
     }
 
-    public void process(Mat rgbaImage) {
+    public void detect(Mat rgbaImage) {
         Imgproc.pyrDown(rgbaImage, mPyrDownMat);
         Imgproc.pyrDown(mPyrDownMat, mPyrDownMat);
 
-        Imgproc.cvtColor(mPyrDownMat, mHsvMat, Imgproc.COLOR_RGB2HSV_FULL);
+        Imgproc.cvtColor(mPyrDownMat, mHsvMat, Imgproc.COLOR_BGRA2BGR);
 
         Core.inRange(mHsvMat, mLowerBound, mUpperBound, mMask);
         Imgproc.dilate(mMask, mDilatedMask, new Mat());
@@ -103,24 +103,31 @@ public class BlobDetector {
         // Filter contours by area and resize to fit the original image size
         mContours.clear();
         each = contours.iterator();
+
+        // Save to reuse contour computation, instead of recalculating on every frame
+        double biggestContours = -1;
         while (each.hasNext()) {
             MatOfPoint contour = each.next();
-            if (Imgproc.contourArea(contour) > mMinContourArea*maxArea) {
+            double contourArea = Imgproc.contourArea(contour);
+            if(contourArea > biggestContours){
+                biggestContours = contourArea;
+                mLargestContour = contour;
+            }
+            if (contourArea > mMinContourArea*maxArea) {
                 Core.multiply(contour, new Scalar(4,4), contour);
                 mContours.add(contour);
             }
         }
 
-        if(mContours.size() > 0){
-
-        }
-
     }
 
-    public List<MatOfPoint> getContours() {
+    public List<MatOfPoint> getAllDetected() {
         return mContours;
     }
-    public RotatedRect getCamshiftRect(){return mBoundingRect;}
-    public Rect getCamshiftWindow(){return mWindow;}
+
+    @Override
+    public Mat getMainDetected() {
+        return mLargestContour;
+    }
 
 }

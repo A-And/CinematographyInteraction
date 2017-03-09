@@ -12,7 +12,6 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.SeekBar;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import com.google.atap.tangoservice.Tango;
 import com.google.atap.tangoservice.TangoCameraIntrinsics;
@@ -26,6 +25,7 @@ import com.google.atap.tangoservice.TangoPointCloudData;
 import com.google.atap.tangoservice.TangoPoseData;
 import com.google.atap.tangoservice.TangoXyzIjData;
 import com.ol.andon.reflex.cv.BlobDetector;
+import com.ol.andon.reflex.cv.FigureDetector;
 import com.ol.andon.reflex.services.MicroBitCommsService;
 
 import org.opencv.android.BaseLoaderCallback;
@@ -37,6 +37,7 @@ import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfPoint;
+import org.opencv.core.MatOfRect;
 import org.opencv.core.Point;
 import org.opencv.core.Rect;
 import org.opencv.core.RotatedRect;
@@ -48,25 +49,21 @@ import org.opencv.video.Video;
 
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
-public class PhotoActivity extends AppCompatActivity  implements CameraBridgeViewBase.CvCameraViewListener2, View.OnTouchListener{
+public class PhotoActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener2, View.OnTouchListener {
 
 
     private static final String TAG = PhotoActivity.class.getSimpleName();
 
 
     // OpenCV Settings
-    private Mat                  mRgba;
-    private Scalar               mBlobColorRgba;
-    private Scalar               mBlobColorHsv;
-    private Mat                  mSpectrum;
+    private Mat mRgba;
+    private Scalar mBlobColorRgba;
+    private Scalar mBlobColorHsv;
+    private Mat mSpectrum;
     private Size SPECTRUM_SIZE;
     private static Scalar CONTOUR_COLOR;
-    private static Scalar BOUND_COLOR;
+    private static Scalar FIGURE_COLOUR;
     private static Scalar CENTER_COLOUR;
     private Point currentMainObjCenter;
     private Point mainBoundLockPoint;
@@ -76,6 +73,7 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
     private static int CAM_WIDTH = 1280;
 
     private BlobDetector mDetector;
+    private FigureDetector mFigureDetector;
     private TangoCameraPreview mTangoCameraView;
     private CameraBridgeViewBase mOpenCVCameraView;
     private MicroBitCommsService mMicroBitPairingService;
@@ -96,8 +94,7 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         @Override
         public void onManagerConnected(int status) {
             switch (status) {
-                case LoaderCallbackInterface.SUCCESS:
-                {
+                case LoaderCallbackInterface.SUCCESS: {
                     Log.i(TAG, "OpenCV loaded successfully");
                     mOpenCVLoaded = true;
                     mOpenCVCameraView = (JavaCameraView) findViewById(R.id.opencv_camera_view);
@@ -108,22 +105,24 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
                     mOpenCVCameraView.setVisibility(SurfaceView.VISIBLE);
 
 
-                } break;
-                default:
-                {
+                }
+                break;
+                default: {
                     super.onManagerConnected(status);
-                } break;
+                }
+                break;
             }
         }
     };
 
-    private Runnable updateServoValues = new Runnable(){
+    private Runnable updateServoValues = new Runnable() {
         @Override
         public void run() {
-            if(mMicroBitPairingService != null && mMicroBitPairingService.isConnected())
-                mMicroBitPairingService.writeXYZ(mX , mY, 0 );
+            if (mMicroBitPairingService != null && mMicroBitPairingService.isConnected())
+                mMicroBitPairingService.writeXYZ(mX, mY, 0);
         }
     };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -135,10 +134,9 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
-       // System.loadLibrary("native-lib");
+        // System.loadLibrary("native-lib");
         Log.i(TAG, "Trying to load OpenCV library");
-        if (!OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_2_4_10, this, mOpenCVCallBack))
-        {
+        if (!OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_2_4_10, this, mOpenCVCallBack)) {
             Log.e(TAG, "Cannot connect to OpenCV Manager");
         }
 
@@ -155,26 +153,22 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         mTango = new Tango(PhotoActivity.this, new Runnable() {
             @Override
             public void run() {
-                synchronized (PhotoActivity.this){
-                    mTangoCameraView.connectToTangoCamera(mTango, TangoCameraIntrinsics.TANGO_CAMERA_DEPTH);
+                synchronized (PhotoActivity.this) {
+                    mTangoCameraView.connectToTangoCamera(mTango, TangoCameraIntrinsics.TANGO_CAMERA_COLOR);
                     mTangoConfig = setupTango(mTango);
-                    try{
+                    try {
                         setTangoListeners();
-                    }
-                    catch(TangoErrorException e){
+                    } catch (TangoErrorException e) {
                         Log.e(TAG, "Tango exception", e);
-                    }
-                    catch(SecurityException e){
+                    } catch (SecurityException e) {
                         Log.e(TAG, "Security exception", e);
                     }
 
-                    try{
+                    try {
                         mTango.connect(mTangoConfig);
-                    }
-                    catch(TangoOutOfDateException e){
+                    } catch (TangoOutOfDateException e) {
                         Log.e(TAG, "Service out of date exception", e);
-                    }
-                    catch (TangoErrorException e){
+                    } catch (TangoErrorException e) {
                         Log.e(TAG, "Error exception", e);
                     }
                 }
@@ -189,7 +183,7 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
     }
 
     @Override
-    protected void onResume(){
+    protected void onResume() {
         super.onResume();
         mOpenCVCameraView.enableView();
         super.onResume();
@@ -203,41 +197,39 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         mTango = new Tango(PhotoActivity.this, new Runnable() {
             @Override
             public void run() {
-                synchronized (PhotoActivity.this){
+                synchronized (PhotoActivity.this) {
                     mTangoCameraView.connectToTangoCamera(mTango, TangoCameraIntrinsics.TANGO_CAMERA_DEPTH);
                     mTangoConfig = setupTango(mTango);
-                    try{
+                    try {
                         setTangoListeners();
-                    }
-                    catch(TangoErrorException e){
+                    } catch (TangoErrorException e) {
                         Log.e(TAG, "Tango exception", e);
-                    }
-                    catch(SecurityException e){
+                    } catch (SecurityException e) {
                         Log.e(TAG, "Security exception", e);
                     }
 
-                    try{
+                    try {
                         mTango.connect(mTangoConfig);
-                    }
-                    catch(TangoOutOfDateException e){
+                    } catch (TangoOutOfDateException e) {
                         Log.e(TAG, "Service out of date exception", e);
-                    }
-                    catch (TangoErrorException e){
+                    } catch (TangoErrorException e) {
                         Log.e(TAG, "Error exception", e);
                     }
                 }
             }
         });
     }
+
     @Override
-    protected void onStart(){
+    protected void onStart() {
         super.onStart();
     }
+
     @Override
-    protected void onStop(){
+    protected void onStop() {
         super.onStop();
 
-        if(mMicroBitPairingService != null)
+        if (mMicroBitPairingService != null)
             mMicroBitPairingService.disconnect();
     }
 
@@ -246,7 +238,6 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
      * which is packaged with this application.
      */
     //public native String stringFromJNI(int arg);
-
     public static Camera getCamera() {
         Camera c = null;
         try {
@@ -257,7 +248,8 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         return c;
 
     }
-    private TangoConfig setupTango(Tango tangoInstance){
+
+    private TangoConfig setupTango(Tango tangoInstance) {
 
         TangoConfig config = tangoInstance.getConfig(TangoConfig.CONFIG_TYPE_DEFAULT);
         config.putBoolean(TangoConfig.KEY_BOOLEAN_MOTIONTRACKING, true);
@@ -268,7 +260,8 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         //config.putBoolean(TangoConfig.KEY_BOOLEAN_AUTORECOVERY, true);
         return config;
     }
-    private void setTangoListeners(){
+
+    private void setTangoListeners() {
         final ArrayList<TangoCoordinateFramePair> framePairs = new ArrayList<TangoCoordinateFramePair>();
         framePairs.add(new TangoCoordinateFramePair(TangoPoseData.COORDINATE_FRAME_START_OF_SERVICE, TangoPoseData.COORDINATE_FRAME_DEVICE));
         mTango.connectListener(framePairs, new Tango.OnTangoUpdateListener() {
@@ -289,8 +282,7 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
                 if (i == TangoCameraIntrinsics.TANGO_CAMERA_COLOR) {
                     mTangoCameraView.onFrameAvailable();
 
-                }
-                else if(i == TangoCameraIntrinsics.TANGO_CAMERA_DEPTH){
+                } else if (i == TangoCameraIntrinsics.TANGO_CAMERA_DEPTH) {
                     mTangoCameraView.onFrameAvailable();
                 }
             }
@@ -307,29 +299,29 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         });
     }
 
-    private void displayTangoData(TangoPoseData poseData){
+    private void displayTangoData(TangoPoseData poseData) {
         float[] orientation = poseData.getRotationAsFloats();
         float[] translation = poseData.getTranslationAsFloats();
         StringBuilder newReadings = new StringBuilder();
         newReadings.append(String.format("Orientation X: %.5f, Y: %.5f, Z:%.5f\n", orientation[0], orientation[1], orientation[2]));
         newReadings.append(String.format("Translation X: %.5f, Y: %.5f, Z:%.5f", translation[0], translation[1], translation[2]));
         final String readingsString = newReadings.toString();
-        runOnUiThread(new Runnable(){
+        runOnUiThread(new Runnable() {
             @Override
-            public void run(){
+            public void run() {
                 TextView readings = (TextView) findViewById(R.id.sensor_readings);
                 readings.setText(readingsString);
             }
-        } );
+        });
 
     }
 
-    private void displayPointCloudData(TangoPointCloudData pointCloudData){
+    private void displayPointCloudData(TangoPointCloudData pointCloudData) {
         FloatBuffer points = pointCloudData.points;
         final String pointString = Integer.toString(pointCloudData.numPoints);
-        runOnUiThread(new Runnable (){
+        runOnUiThread(new Runnable() {
             @Override
-            public void run(){
+            public void run() {
                 TextView readings = (TextView) findViewById(R.id.pcl_readings);
                 readings.setText(pointString);
             }
@@ -337,11 +329,11 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
 
     }
 
-    private void displayXyzIj(TangoXyzIjData xyzIj){
+    private void displayXyzIj(TangoXyzIjData xyzIj) {
         final String pointString = xyzIj.toString();
-        runOnUiThread(new Runnable (){
+        runOnUiThread(new Runnable() {
             @Override
-            public void run(){
+            public void run() {
                 TextView readings = (TextView) findViewById(R.id.pcl_readings);
                 readings.setText(pointString);
             }
@@ -353,14 +345,15 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
     @Override
     public void onCameraViewStarted(int width, int height) {
         mDetector = new BlobDetector();
+        mFigureDetector = new FigureDetector();
         mRgba = new Mat(height, width, CvType.CV_8UC4);
         mSpectrum = new Mat();
         mBlobColorRgba = new Scalar(255);
         mBlobColorHsv = new Scalar(255);
         SPECTRUM_SIZE = new Size(200, 64);
-        CENTER_COLOUR = new Scalar(255,0,0,255);
-        CONTOUR_COLOR = new Scalar(0,0,255,255);
-        BOUND_COLOR = new Scalar(255,0,176,12);
+        CENTER_COLOUR = new Scalar(255, 0, 0, 255);
+        CONTOUR_COLOR = new Scalar(0, 0, 255, 255);
+        FIGURE_COLOUR = new Scalar(255, 0, 176, 12);
 
     }
 
@@ -374,63 +367,72 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         mRgba = inputFrame.rgba();
 
         if (mIsColorSelected) {
-            mDetector.process(mRgba);
-            List<MatOfPoint> contours = mDetector.getContours();
+            mDetector.detect(mRgba);
+            MatOfPoint blob = (MatOfPoint) mDetector.getMainDetected();
 
+            MatOfPoint blurredBounds = new MatOfPoint();
+            Imgproc.blur(blob, blurredBounds, new Size(3, 3));
+            Rect bound = Imgproc.boundingRect(blurredBounds);
 
-            if(contours.size() > 0){
-                MatOfPoint blurredBounds = new MatOfPoint();
-                Imgproc.blur(contours.get(0), blurredBounds, new Size(3,3));
-                Rect bound = Imgproc.boundingRect(blurredBounds);
+            Imgproc.rectangle(mRgba, new Point(bound.x, bound.y), new Point(bound.x + bound.width, bound.y + bound.height), CONTOUR_COLOR, 10);
+            final Point currCenter = new Point(bound.x + bound.width / 2, bound.y + bound.height / 2);
+            //mMicroBitPairingService.writeXYZ((byte)angle, (byte)angle, (byte) 0);
 
-                Imgproc.rectangle(mRgba, new Point(bound.x, bound.y), new Point(bound.x + bound.width, bound.y + bound.height),CONTOUR_COLOR, 10);
-                final Point currCenter = new Point( bound.x + bound.width/2, bound.y + bound.height/2);
-                //mMicroBitPairingService.writeXYZ((byte)angle, (byte)angle, (byte) 0);
+            if (mainBoundLockPoint == null) {
+                mainBoundLockPoint = currCenter;
+            }
 
-                if(mainBoundLockPoint == null){
-                    mainBoundLockPoint = currCenter;
-                }
-
-                if(currentMainObjCenter == null){
-                    currentMainObjCenter = currCenter;
-                }
+            if (currentMainObjCenter == null) {
+                currentMainObjCenter = currCenter;
+            }
 //                Imgproc.circle(mRgba,mainBoundLockPoint, 10, CENTER_COLOUR);
 
-                final double referenceX = mainBoundLockPoint.x;
-                final double referenceY = mainBoundLockPoint.y;
+            final double referenceX = mainBoundLockPoint.x;
+            final double referenceY = mainBoundLockPoint.y;
 
-                Log.d(TAG, "Width " + CAM_WIDTH + " X Height: " + CAM_HEIGHT);
-                if(currCenter.x != 0)
-                    mX =(int)( 90 + 90 * (referenceX - currCenter.x)/referenceX);
-                if(currCenter.y != 0)
-                    mY =(int)( 90 + 90 * (referenceY - currCenter.y)/referenceY);
+            Log.d(TAG, "Width " + CAM_WIDTH + " X Height: " + CAM_HEIGHT);
+            if (currCenter.x != 0)
+                mX = (int) (90 + 90 * (referenceX - currCenter.x) / referenceX);
+            if (currCenter.y != 0)
+                mY = (int) (90 + 90 * (referenceY - currCenter.y) / referenceY);
 
-                final int dispX = mX;
-                final int dispY = mY;
-                runOnUiThread(new Runnable (){
-                    @Override
-                    public void run(){
-                        TextView readings = (TextView) findViewById(R.id.tracking_readings);
-                        //readings.setText("Center X: " + currCenter.x + " Y: " + currCenter.y + "| Dif X: " + (referenceX - currCenter.x ) + " Y:" + (referenceY- currCenter.y ));
-                        readings.setText("Center X: " + currCenter.x + " Y: " + currCenter.y + "| X Angle: " + dispX + " Y Angle: " + dispY);
-                    }
-                });
-                currentMainObjCenter = currCenter;
-                frameCounter = (frameCounter + 1) % 2;
+            final int dispX = mX;
+            final int dispY = mY;
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    TextView readings = (TextView) findViewById(R.id.tracking_readings);
+                    //readings.setText("Center X: " + currCenter.x + " Y: " + currCenter.y + "| Dif X: " + (referenceX - currCenter.x ) + " Y:" + (referenceY- currCenter.y ));
+                    readings.setText("Center X: " + currCenter.x + " Y: " + currCenter.y + "| X Angle: " + dispX + " Y Angle: " + dispY);
+                }
+            });
+            currentMainObjCenter = currCenter;
+            frameCounter = (frameCounter + 1) % 2;
 
-                if(frameCounter == 0)
-                    mMicroBitPairingService.writeXYZ(mX ,mY, 0);
+            if (frameCounter == 0)
+                mMicroBitPairingService.writeXYZ(mX, mY, 0);
 
-                Imgproc.drawContours(mRgba, contours, -1, CONTOUR_COLOR);
-                Imgproc.circle(mRgba,currCenter, 10, CENTER_COLOUR);
-                Imgproc.circle(mRgba,mainBoundLockPoint, 10, CENTER_COLOUR);
-            }
+            Imgproc.drawContours(mRgba, mDetector.getAllDetected(), -1, CONTOUR_COLOR);
+            Imgproc.circle(mRgba, currCenter, 10, CENTER_COLOUR);
+            Imgproc.circle(mRgba, mainBoundLockPoint, 10, CENTER_COLOUR);
+
 
             Mat colorLabel = mRgba.submat(4, 68, 4, 68);
             colorLabel.setTo(mBlobColorRgba);
             Mat spectrumLabel = mRgba.submat(4, 4 + mSpectrum.rows(), 70, 70 + mSpectrum.cols());
             mSpectrum.copyTo(spectrumLabel);
         }
+
+        mFigureDetector.detect(mRgba);
+        MatOfRect figures = mFigureDetector.getAllDetected();
+
+        for (Rect detected : figures.toList()) {
+            Point uLeft = new Point(detected.x, detected.y);
+            Point bRight = new Point(detected.x + detected.width, detected.y + detected.height);
+            Log.v("Figure Drawing","UL: " + uLeft.toString() + "| BR: " + bRight.toString());
+            Imgproc.rectangle(mRgba, uLeft, bRight, FIGURE_COLOUR);
+        }
+
 
         return mRgba;
     }
@@ -445,8 +447,8 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         int xOffset = (this.mOpenCVCameraView.getWidth() - cols) / 2;
         int yOffset = (this.mOpenCVCameraView.getHeight() - rows) / 2;
 
-        int x = (int)event.getX() - xOffset;
-        int y = (int)event.getY() - yOffset;
+        int x = (int) event.getX() - xOffset;
+        int y = (int) event.getY() - yOffset;
 
         Log.i(TAG, "Touch image coordinates: (" + x + ", " + y + ")");
 
@@ -454,11 +456,11 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
 
         Rect touchedRect = new Rect();
 
-        touchedRect.x = (x>4) ? x-4 : 0;
-        touchedRect.y = (y>4) ? y-4 : 0;
+        touchedRect.x = (x > 4) ? x - 4 : 0;
+        touchedRect.y = (y > 4) ? y - 4 : 0;
 
-        touchedRect.width = (x+4 < cols) ? x + 4 - touchedRect.x : cols - touchedRect.x;
-        touchedRect.height = (y+4 < rows) ? y + 4 - touchedRect.y : rows - touchedRect.y;
+        touchedRect.width = (x + 4 < cols) ? x + 4 - touchedRect.x : cols - touchedRect.x;
+        touchedRect.height = (y + 4 < rows) ? y + 4 - touchedRect.y : rows - touchedRect.y;
 
         Mat touchedRegionRgba = mRgba.submat(touchedRect);
 
@@ -467,7 +469,7 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
 
         // Calculate average color of touched region
         mBlobColorHsv = Core.sumElems(touchedRegionHsv);
-        int pointCount = touchedRect.width*touchedRect.height;
+        int pointCount = touchedRect.width * touchedRect.height;
         for (int i = 0; i < mBlobColorHsv.val.length; i++)
             mBlobColorHsv.val[i] /= pointCount;
 
@@ -492,21 +494,24 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
 
         return false; // don't need subsequent touch events
     }
+
     public void mbSendXY(View v) {
         if (!mMicroBitPairingService.isConnected()) mMicroBitPairingService.connect();
         SeekBar xAngle = (SeekBar) findViewById(R.id.xServoAngle);
         SeekBar yAngle = (SeekBar) findViewById(R.id.yServoAngle);
 
-        int x =  xAngle.getProgress();
+        int x = xAngle.getProgress();
 
         int y = yAngle.getProgress();
 
 
-        mMicroBitPairingService.writeXY((x),(y ));
+        mMicroBitPairingService.writeXY((x), (y));
     }
-    public void mbConnect(View v){
+
+    public void mbConnect(View v) {
         mMicroBitPairingService.connect();
     }
+
     public void mbSendXYZ(View v) {
 //        this.mbSendXY(v);
 
@@ -515,13 +520,13 @@ public class PhotoActivity extends AppCompatActivity  implements CameraBridgeVie
         SeekBar yAngle = (SeekBar) findViewById(R.id.yServoAngle);
         SeekBar zForce = (SeekBar) findViewById(R.id.zForce);
 
-            int x =  xAngle.getProgress();
+        int x = xAngle.getProgress();
 
-            int y = yAngle.getProgress();
+        int y = yAngle.getProgress();
 
-            int z = zForce.getProgress();
+        int z = zForce.getProgress();
 
-            mMicroBitPairingService.writeXYZ( (x), (y ),  (z));
+        mMicroBitPairingService.writeXYZ((x), (y), (z));
 
     }
 
