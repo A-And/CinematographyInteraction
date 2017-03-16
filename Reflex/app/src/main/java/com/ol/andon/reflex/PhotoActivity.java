@@ -1,6 +1,7 @@
 package com.ol.andon.reflex;
 
 import android.Manifest;
+import android.content.Context;
 import android.hardware.Camera;
 import android.os.Bundle;
 import android.support.v4.content.ContextCompat;
@@ -25,6 +26,7 @@ import com.google.atap.tangoservice.TangoPointCloudData;
 import com.google.atap.tangoservice.TangoPoseData;
 import com.google.atap.tangoservice.TangoXyzIjData;
 import com.ol.andon.reflex.cv.BlobDetector;
+import com.ol.andon.reflex.cv.Camshift;
 import com.ol.andon.reflex.cv.FigureDetector;
 import com.ol.andon.reflex.services.MicroBitCommsService;
 
@@ -43,10 +45,14 @@ import org.opencv.core.Rect;
 import org.opencv.core.RotatedRect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
-import org.opencv.core.TermCriteria;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.video.Video;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 
@@ -56,15 +62,20 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
     private static final String TAG = PhotoActivity.class.getSimpleName();
 
 
-    // OpenCV Settings
+    // Blob color tracking Parameters
     private Mat mRgba;
     private Scalar mBlobColorRgba;
     private Scalar mBlobColorHsv;
     private Mat mSpectrum;
     private Size SPECTRUM_SIZE;
+
+    // Object detection outline colors
     private static Scalar CONTOUR_COLOR;
-    private static Scalar FIGURE_COLOUR;
-    private static Scalar CENTER_COLOUR;
+    private static Scalar FIGURE_COLOR;
+    private static Scalar FACE_COLOR;
+    private static Scalar CENTER_COLOR;
+    private static Scalar ROI_COLOR;
+
     private Point currentMainObjCenter;
     private Point mainBoundLockPoint;
 
@@ -77,6 +88,7 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
     private TangoCameraPreview mTangoCameraView;
     private CameraBridgeViewBase mOpenCVCameraView;
     private MicroBitCommsService mMicroBitPairingService;
+    private boolean mColorSelected = false;
 
     // Tango Setup
     private Tango mTango;
@@ -87,8 +99,12 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
     private int mY;
     private int mZ;
     private int frameCounter;
-    private boolean mIsColorSelected = false;
-    private boolean mOpenCVLoaded = false;
+    private boolean mTrackingObjectSelected = false;
+
+    // Figure tracking parameters
+    private MatOfRect mFigureRois;
+    private Rect trackedFigureRoi;
+    private Camshift mCamshift;
 
     private BaseLoaderCallback mOpenCVCallBack = new BaseLoaderCallback(this) {
         @Override
@@ -96,9 +112,8 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
             switch (status) {
                 case LoaderCallbackInterface.SUCCESS: {
                     Log.i(TAG, "OpenCV loaded successfully");
-                    mOpenCVLoaded = true;
                     mOpenCVCameraView = (JavaCameraView) findViewById(R.id.opencv_camera_view);
-                    mOpenCVCameraView.setCameraIndex(TangoCameraIntrinsics.TANGO_CAMERA_COLOR);
+                    mOpenCVCameraView.setCameraIndex(TangoCameraIntrinsics.TANGO_CAMERA_FISHEYE);
 
                     mOpenCVCameraView.enableView();
 
@@ -279,10 +294,7 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
             public void onFrameAvailable(int i) {
                 // Check if the frame available is for the camera we want and
                 // update its frame on the camera preview.
-                if (i == TangoCameraIntrinsics.TANGO_CAMERA_COLOR) {
-                    mTangoCameraView.onFrameAvailable();
-
-                } else if (i == TangoCameraIntrinsics.TANGO_CAMERA_DEPTH) {
+                if (i == TangoCameraIntrinsics.TANGO_CAMERA_COLOR || i == TangoCameraIntrinsics.TANGO_CAMERA_DEPTH || i == TangoCameraIntrinsics.TANGO_CAMERA_FISHEYE) {
                     mTangoCameraView.onFrameAvailable();
                 }
             }
@@ -341,20 +353,47 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
 
     }
 
+    private File copyResourceFileToDisk(int rawId, String fileName) {
+        File mResFile = null;
+        try {
+            InputStream is = getResources().openRawResource(rawId);
+            File cascadeDir = getDir("cascade", Context.MODE_APPEND);
+            mResFile = new File(cascadeDir, fileName);
+            FileOutputStream os = new FileOutputStream(mResFile);
+
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            while ((bytesRead = is.read(buffer)) != -1) {
+                os.write(buffer, 0, bytesRead);
+            }
+            is.close();
+            os.close();
+        } catch (Exception e) {
+            Log.e(TAG, "Couldn't load classifier file " + e.getMessage());
+        }
+
+        return mResFile;
+    }
 
     @Override
     public void onCameraViewStarted(int width, int height) {
         mDetector = new BlobDetector();
-        mFigureDetector = new FigureDetector();
+
+        File mFaceCascadeFile = copyResourceFileToDisk(R.raw.haarcascade_frontalface_default, "frontalFace.xml");
+        File mBodyCascadeFile = copyResourceFileToDisk(R.raw.haarcascade_upperbody, "fullBody.xml");
+        mFigureDetector = new FigureDetector(mFaceCascadeFile.getAbsolutePath(), mBodyCascadeFile.getAbsolutePath());
+
         mRgba = new Mat(height, width, CvType.CV_8UC4);
         mSpectrum = new Mat();
         mBlobColorRgba = new Scalar(255);
         mBlobColorHsv = new Scalar(255);
         SPECTRUM_SIZE = new Size(200, 64);
-        CENTER_COLOUR = new Scalar(255, 0, 0, 255);
-        CONTOUR_COLOR = new Scalar(0, 0, 255, 255);
-        FIGURE_COLOUR = new Scalar(255, 0, 176, 12);
 
+        CENTER_COLOR = new Scalar(255, 0, 0, 255);
+        CONTOUR_COLOR = new Scalar(0, 0, 255, 255);
+        FIGURE_COLOR = new Scalar(255, 0, 176, 12);
+        FACE_COLOR = new Scalar(100, 250, 0, 12);
+        ROI_COLOR = new Scalar(0, 255, 255, 0);
     }
 
     @Override
@@ -366,7 +405,7 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
         mRgba = inputFrame.rgba();
 
-        if (mIsColorSelected) {
+        if (mColorSelected ) {
             mDetector.detect(mRgba);
             MatOfPoint blob = (MatOfPoint) mDetector.getMainDetected();
 
@@ -385,16 +424,19 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
             if (currentMainObjCenter == null) {
                 currentMainObjCenter = currCenter;
             }
-//                Imgproc.circle(mRgba,mainBoundLockPoint, 10, CENTER_COLOUR);
 
             final double referenceX = mainBoundLockPoint.x;
             final double referenceY = mainBoundLockPoint.y;
 
+
+            int xOffset = (this.mOpenCVCameraView.getWidth() - mRgba.cols()) / 2;
+            int yOffset = (this.mOpenCVCameraView.getHeight() - mRgba.rows()) / 2;
+
             Log.d(TAG, "Width " + CAM_WIDTH + " X Height: " + CAM_HEIGHT);
             if (currCenter.x != 0)
-                mX = (int) (90 + 90 * (referenceX - currCenter.x) / referenceX);
+                mX = (int) (90 + 90 * (referenceX - currCenter.x) / referenceX) ;//- xOffset;
             if (currCenter.y != 0)
-                mY = (int) (90 + 90 * (referenceY - currCenter.y) / referenceY);
+                mY = (int) (90 + 90 * (referenceY - currCenter.y) / referenceY) ;//- yOffset;
 
             final int dispX = mX;
             final int dispY = mY;
@@ -406,6 +448,7 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
                     readings.setText("Center X: " + currCenter.x + " Y: " + currCenter.y + "| X Angle: " + dispX + " Y Angle: " + dispY);
                 }
             });
+
             currentMainObjCenter = currCenter;
             frameCounter = (frameCounter + 1) % 2;
 
@@ -413,8 +456,8 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
                 mMicroBitPairingService.writeXYZ(mX, mY, 0);
 
             Imgproc.drawContours(mRgba, mDetector.getAllDetected(), -1, CONTOUR_COLOR);
-            Imgproc.circle(mRgba, currCenter, 10, CENTER_COLOUR);
-            Imgproc.circle(mRgba, mainBoundLockPoint, 10, CENTER_COLOUR);
+            Imgproc.circle(mRgba, currCenter, 10, CENTER_COLOR);
+            Imgproc.circle(mRgba, mainBoundLockPoint, 10, CENTER_COLOR);
 
 
             Mat colorLabel = mRgba.submat(4, 68, 4, 68);
@@ -424,18 +467,25 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
         }
 
         mFigureDetector.detect(mRgba);
-        MatOfRect figures = mFigureDetector.getAllDetected();
 
-        for (Rect detected : figures.toList()) {
-            Point uLeft = new Point(detected.x, detected.y);
-            Point bRight = new Point(detected.x + detected.width, detected.y + detected.height);
-            Log.v("Figure Drawing","UL: " + uLeft.toString() + "| BR: " + bRight.toString());
-            Imgproc.rectangle(mRgba, uLeft, bRight, FIGURE_COLOUR);
+        MatOfRect faces = mFigureDetector.getmFacesDetected();
+
+        drawMatOfRect(mRgba, faces, FACE_COLOR);
+
+
+        mFigureRois = mFigureDetector.getBodyROIs();
+        drawMatOfRect(mRgba, mFigureRois, ROI_COLOR);
+
+        // Tracking figure has been already selected, apply camshift and draw
+        if(mTrackingObjectSelected){
+            RotatedRect shiftWindow = mCamshift.getROI(mRgba);
+            drawRotatedRect(mRgba, shiftWindow, FIGURE_COLOR);
         }
-
 
         return mRgba;
     }
+
+
 
     @Override
     public boolean onTouch(View v, MotionEvent event) {
@@ -449,48 +499,18 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
 
         int x = (int) event.getX() - xOffset;
         int y = (int) event.getY() - yOffset;
-
-        Log.i(TAG, "Touch image coordinates: (" + x + ", " + y + ")");
-
         if ((x < 0) || (y < 0) || (x > cols) || (y > rows)) return false;
 
-        Rect touchedRect = new Rect();
-
-        touchedRect.x = (x > 4) ? x - 4 : 0;
-        touchedRect.y = (y > 4) ? y - 4 : 0;
-
-        touchedRect.width = (x + 4 < cols) ? x + 4 - touchedRect.x : cols - touchedRect.x;
-        touchedRect.height = (y + 4 < rows) ? y + 4 - touchedRect.y : rows - touchedRect.y;
-
-        Mat touchedRegionRgba = mRgba.submat(touchedRect);
-
-        Mat touchedRegionHsv = new Mat();
-        Imgproc.cvtColor(touchedRegionRgba, touchedRegionHsv, Imgproc.COLOR_RGB2HSV_FULL);
-
-        // Calculate average color of touched region
-        mBlobColorHsv = Core.sumElems(touchedRegionHsv);
-        int pointCount = touchedRect.width * touchedRect.height;
-        for (int i = 0; i < mBlobColorHsv.val.length; i++)
-            mBlobColorHsv.val[i] /= pointCount;
-
-        mBlobColorRgba = convertScalarHsv2Rgba(mBlobColorHsv);
-
-        Log.i(TAG, "Touched rgba color: (" + mBlobColorRgba.val[0] + ", " + mBlobColorRgba.val[1] +
-                ", " + mBlobColorRgba.val[2] + ", " + mBlobColorRgba.val[3] + ")");
-
-        mDetector.setHsvColor(mBlobColorHsv);
-
-        Imgproc.resize(mDetector.getSpectrum(), mSpectrum, SPECTRUM_SIZE);
-
-        mIsColorSelected = true;
-        mainBoundLockPoint = null;
-
-        //ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-
-        //scheduler.scheduleAtFixedRate(updateServoValues, 0, 5, TimeUnit.SECONDS);
-
-        touchedRegionRgba.release();
-        touchedRegionHsv.release();
+        Point touchPoint = new Point(x,y);
+        for(Rect figure: mFigureRois.toList()){
+            if(figure.contains(touchPoint)){
+                Log.i(TAG, "Touched frame: " + figure.toString());
+                trackedFigureRoi = figure;
+                mCamshift = new Camshift(mRgba, trackedFigureRoi);
+                mTrackingObjectSelected = true;
+                break;
+            }
+        }
 
         return false; // don't need subsequent touch events
     }
@@ -536,6 +556,79 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
         Imgproc.cvtColor(pointMatHsv, pointMatRgba, Imgproc.COLOR_HSV2RGB_FULL, 4);
 
         return new Scalar(pointMatRgba.get(0, 0));
+    }
+
+    private void drawMatOfRect(Mat frame, MatOfRect mat, Scalar color){
+        for (Rect detected : mat.toList()) {
+            Point uLeft = new Point(detected.x, detected.y);
+            Point bRight = new Point(detected.x + detected.width, detected.y + detected.height);
+            Imgproc.rectangle(frame, uLeft, bRight, color, 10);
+        }
+    }
+
+    private void drawRotatedRect(Mat frame, RotatedRect rect, Scalar color){
+        Point[] points = new Point[4];
+        rect.points(points);
+        for(int i = 0; i < 4; i++){
+            Imgproc.line(frame, points[i], points[(i+1)%4], color, 3);
+        }
+    }
+
+    // Pick a color for color blob tracking
+    private void pickColor(View v, MotionEvent event){
+
+        int cols = mRgba.cols();
+        int rows = mRgba.rows();
+        CAM_HEIGHT = mOpenCVCameraView.getHeight();
+        CAM_WIDTH = mOpenCVCameraView.getWidth();
+
+        int xOffset = (this.mOpenCVCameraView.getWidth() - cols) / 2;
+        int yOffset = (this.mOpenCVCameraView.getHeight() - rows) / 2;
+
+        int x = (int) event.getX() - xOffset;
+        int y = (int) event.getY() - yOffset;
+
+        Log.i(TAG, "Touch image coordinates: (" + x + ", " + y + ")");
+
+
+        Rect touchedRect = new Rect();
+
+        touchedRect.x = (x > 4) ? x - 4 : 0;
+        touchedRect.y = (y > 4) ? y - 4 : 0;
+
+        touchedRect.width = (x + 4 < cols) ? x + 4 - touchedRect.x : cols - touchedRect.x;
+        touchedRect.height = (y + 4 < rows) ? y + 4 - touchedRect.y : rows - touchedRect.y;
+
+        Mat touchedRegionRgba = mRgba.submat(touchedRect);
+
+        Mat touchedRegionHsv = new Mat();
+        Imgproc.cvtColor(touchedRegionRgba, touchedRegionHsv, Imgproc.COLOR_RGB2HSV_FULL);
+
+        // Calculate average color of touched region
+        mBlobColorHsv = Core.sumElems(touchedRegionHsv);
+        int pointCount = touchedRect.width * touchedRect.height;
+        for (int i = 0; i < mBlobColorHsv.val.length; i++)
+            mBlobColorHsv.val[i] /= pointCount;
+
+        mBlobColorRgba = convertScalarHsv2Rgba(mBlobColorHsv);
+
+        Log.i(TAG, "Touched rgba color: (" + mBlobColorRgba.val[0] + ", " + mBlobColorRgba.val[1] +
+                ", " + mBlobColorRgba.val[2] + ", " + mBlobColorRgba.val[3] + ")");
+
+        mDetector.setHsvColor(mBlobColorHsv);
+
+        Imgproc.resize(mDetector.getSpectrum(), mSpectrum, SPECTRUM_SIZE);
+
+        mColorSelected = true;
+        mainBoundLockPoint = null;
+
+        //ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+
+        //scheduler.scheduleAtFixedRate(updateServoValues, 0, 5, TimeUnit.SECONDS);
+
+        touchedRegionRgba.release();
+        touchedRegionHsv.release();
+
     }
 
 }
