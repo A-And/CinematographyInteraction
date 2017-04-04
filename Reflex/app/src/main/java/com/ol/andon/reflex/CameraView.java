@@ -5,75 +5,94 @@ package com.ol.andon.reflex;
  */
 
 import android.content.Context;
+import android.content.ContextWrapper;
+import android.content.Intent;
 import android.hardware.Camera;
+import android.media.MediaScannerConnection;
+import android.net.Uri;
+import android.os.Environment;
+import android.util.AttributeSet;
 import android.util.Log;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
+import org.opencv.android.JavaCameraView;
+
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.List;
 
 /** A basic Camera preview class */
-public class CameraView extends SurfaceView implements SurfaceHolder.Callback {
-    private static final String TAG = "Camera Preview";
-    private SurfaceHolder mHolder;
-    private Camera mCamera;
+public class CameraView extends JavaCameraView implements Camera.PictureCallback{
 
-    public CameraView(Context context, Camera camera) {
-        super(context);
-        mCamera = camera;
+    private Context mContext;
 
-        // Install a SurfaceHolder.Callback so we get notified when the
-        // underlying surface is created and destroyed.
-        mHolder = getHolder();
-        mHolder.addCallback(this);
-        // deprecated setting, but required on Android versions prior to 3.0
-        mHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
+    private File mExternalStorageDir = Environment.getExternalStorageDirectory()    ;
+
+    private final String TAG = "CameraView";
+
+    private String mPictureFileName;
+
+    public CameraView(Context context, AttributeSet attrs){
+        super(context,attrs);
+        mContext = context;
     }
 
-    public void surfaceCreated(SurfaceHolder holder) {
-        // The Surface has been created, now tell the camera where to draw the preview.
-        try {
-            mCamera.setPreviewDisplay(holder);
-            mCamera.startPreview();
-        } catch (IOException e) {
-            Log.d(TAG, "Error setting camera preview: " + e.getMessage());
+    public void takePicture(final String fileName){
+        Log.i(TAG, "Taking picture: " + fileName);
+        this.mPictureFileName = fileName;
+
+        mCamera.setPreviewCallback(null);
+        mCamera.takePicture(null, null, this);
+    }
+    @Override
+    public void onPictureTaken(byte[] data, Camera camera) {
+        Log.i(TAG, "Saving picture to file");
+        mCamera.startPreview();
+        mCamera.setPreviewCallback(this);
+        try{
+
+            File img = new File(mExternalStorageDir, mPictureFileName + ".png");
+
+            FileOutputStream os = new FileOutputStream(img);
+
+            os.write(data);
+            os.flush();
+            os.close();
+            forceScan(img);
+//            Intent intent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+//            intent.setData(Uri.fromFile(img));
+//            mContext.sendBroadcast(intent);
+            Log.i(TAG, "Saved picture to " + img.getAbsolutePath());
+        }
+        catch(IOException e){
+            Log.e(TAG, "Couldn't write picture to file ", e);
         }
     }
 
-    public void surfaceDestroyed(SurfaceHolder holder) {
-        // empty. Take care of releasing the Camera preview in your activity.
+    public List<Camera.Size> getResolutionList() {
+        return mCamera.getParameters().getSupportedPreviewSizes();
     }
 
-    public void surfaceChanged(SurfaceHolder holder, int format, int w, int h) {
-        // If your preview can change or rotate, take care of those events here.
-        // Make sure to stop the preview before resizing or reformatting it.
-
-        if (mHolder.getSurface() == null){
-            // preview surface does not exist
-            return;
-        }
-
-        // stop preview before making changes
-        try {
-            mCamera.stopPreview();
-        } catch (Exception e){
-            // ignore: tried to stop a non-existent preview
-        }
-
-        // set preview size and make any resize, rotate or
-        // reformatting changes here
-
-        // start preview with new settings
-        try {
-            mCamera.setPreviewDisplay(mHolder);
-            mCamera.startPreview();
-
-        } catch (Exception e){
-            Log.d(TAG, "Error starting camera preview: " + e.getMessage());
-        }
+    public void setResolution(Camera.Size resolution) {
+        disconnectCamera();
+        mMaxHeight = resolution.height;
+        mMaxWidth = resolution.width;
+        connectCamera(getWidth(), getHeight());
     }
 
-    public void detectEdges(){
-//        org.opencv.imgproc.Imgproc.Canny();
+    public Camera.Size getResolution() {
+        return mCamera.getParameters().getPreviewSize();
     }
+
+    private void forceScan(File img){
+        MediaScannerConnection.scanFile(mContext,new String[] { img.getAbsolutePath() }, null,new MediaScannerConnection.OnScanCompletedListener() {
+            public void onScanCompleted(String path, Uri uri) {
+                Log.i("ExternalStorage", "Scanned " + path + ":");
+                Log.i("ExternalStorage", "-> uri=" + uri);
+            }
+        });
+    }
+
 }

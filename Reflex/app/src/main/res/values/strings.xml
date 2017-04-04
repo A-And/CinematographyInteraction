@@ -7,5 +7,6 @@
     <string name="connect_button_label">BLE Connect</string>
     <string name="reconnect_button_label">Reconnect</string>
     <string name="tracking_placeholder">Tracking Values</string>
+    <string name="take_picture_button_label">P</string>
 
 </resources>

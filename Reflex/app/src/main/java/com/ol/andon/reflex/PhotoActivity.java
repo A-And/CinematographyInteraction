@@ -1,16 +1,22 @@
 package com.ol.andon.reflex;
 
 import android.Manifest;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.hardware.Camera;
 import android.os.Bundle;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
+import android.text.InputFilter;
+import android.text.InputType;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.EditText;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
@@ -28,6 +34,9 @@ import com.google.atap.tangoservice.TangoXyzIjData;
 import com.ol.andon.reflex.cv.BlobDetector;
 import com.ol.andon.reflex.cv.Camshift;
 import com.ol.andon.reflex.cv.FigureDetector;
+import com.ol.andon.reflex.cv.ITracker;
+import com.ol.andon.reflex.cv.LKOpticalFlow;
+import com.ol.andon.reflex.services.CaptureButtonService;
 import com.ol.andon.reflex.services.MicroBitCommsService;
 
 import org.opencv.android.BaseLoaderCallback;
@@ -45,6 +54,7 @@ import org.opencv.core.Rect;
 import org.opencv.core.RotatedRect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
+import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.video.Video;
 
@@ -54,7 +64,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.FloatBuffer;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 
 public class PhotoActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener2, View.OnTouchListener {
 
@@ -68,6 +80,7 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
     private Scalar mBlobColorHsv;
     private Mat mSpectrum;
     private Size SPECTRUM_SIZE;
+
 
     // Object detection outline colors
     private static Scalar CONTOUR_COLOR;
@@ -83,11 +96,15 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
     private static int CAM_HEIGHT = 960;
     private static int CAM_WIDTH = 1280;
 
+
     private BlobDetector mDetector;
     private FigureDetector mFigureDetector;
     private TangoCameraPreview mTangoCameraView;
     private CameraBridgeViewBase mOpenCVCameraView;
+
+    // Communication services for the microbit and the bluetooth button
     private MicroBitCommsService mMicroBitPairingService;
+    private CaptureButtonService mCaptureButtonService;
     private boolean mColorSelected = false;
 
     // Tango Setup
@@ -104,7 +121,13 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
     // Figure tracking parameters
     private MatOfRect mFigureRois;
     private Rect trackedFigureRoi;
-    private Camshift mCamshift;
+    private ITracker mCamshift;
+
+    private int mSessionPictureNum;
+
+    // User settings to help evaluation
+    private String mSubjectName;
+    private SimpleDateFormat mPictureDateFormat = new SimpleDateFormat("yy_MM_d");
 
     private BaseLoaderCallback mOpenCVCallBack = new BaseLoaderCallback(this) {
         @Override
@@ -112,7 +135,7 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
             switch (status) {
                 case LoaderCallbackInterface.SUCCESS: {
                     Log.i(TAG, "OpenCV loaded successfully");
-                    mOpenCVCameraView = (JavaCameraView) findViewById(R.id.opencv_camera_view);
+                    mOpenCVCameraView = (CameraView) findViewById(R.id.opencv_camera_view);
                     mOpenCVCameraView.setCameraIndex(TangoCameraIntrinsics.TANGO_CAMERA_FISHEYE);
 
                     mOpenCVCameraView.enableView();
@@ -164,6 +187,8 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
 
         SeekBar zSb = (SeekBar) findViewById(R.id.xServoAngle);
         zSb.setMax(180);
+
+
         mTangoCameraView = new TangoCameraPreview(this);
         mTango = new Tango(PhotoActivity.this, new Runnable() {
             @Override
@@ -189,11 +214,37 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
                 }
             }
         });
+
+
         mOpenCVCameraView = (JavaCameraView) findViewById(R.id.opencv_camera_view);
         mOpenCVCameraView.setCvCameraViewListener(this);
         mOpenCVCameraView.setOnTouchListener(this);
         mMicroBitPairingService = new MicroBitCommsService(this);
         mMicroBitPairingService.connect();
+
+        mCaptureButtonService = new CaptureButtonService();
+        mCaptureButtonService.connect();
+
+        // Set up number of pictures taken this session
+        mSessionPictureNum = 0;
+
+        // Set up subject name dialog
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Enter Subject Name");
+
+        final EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_TEXT);
+        builder.setView(input);
+
+        // Set up the buttons
+        builder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                mSubjectName = input.getText().toString();
+            }
+        });
+
+        builder.show();
 
     }
 
@@ -506,13 +557,32 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
             if(figure.contains(touchPoint)){
                 Log.i(TAG, "Touched frame: " + figure.toString());
                 trackedFigureRoi = figure;
-                mCamshift = new Camshift(mRgba, trackedFigureRoi);
+                //mCamshift = new Camshift(mRgba, trackedFigureRoi);
+                //mCamshift = new LKOpticalFlow(mRgba, trackedFigureRoi);
                 mTrackingObjectSelected = true;
                 break;
             }
         }
 
         return false; // don't need subsequent touch events
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event){
+        String key = KeyEvent.keyCodeToString(keyCode);
+        Log.i(TAG, "Key pressed: " + key);
+        if(key == "KEYCODE_VOLUME_UP"){
+            // Lock
+
+            return true;
+        }
+        else if(key == "KEYCODE_ENTER"){
+            if(mRgba != null){
+                takePicture();
+            }
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
     }
 
     public void mbSendXY(View v) {
@@ -549,6 +619,10 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
         mMicroBitPairingService.writeXYZ((x), (y), (z));
 
     }
+    public void takePicture(View v){
+        takePicture();
+    }
+
 
     private Scalar convertScalarHsv2Rgba(Scalar hsvColor) {
         Mat pointMatRgba = new Mat();
@@ -628,6 +702,14 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
 
         touchedRegionRgba.release();
         touchedRegionHsv.release();
+
+    }
+
+    private void takePicture(){
+
+        // take picture
+        Calendar c = Calendar.getInstance();
+        ((CameraView) mOpenCVCameraView).takePicture(mSubjectName + mSessionPictureNum + mPictureDateFormat.format(c.getTime()));
 
     }
 

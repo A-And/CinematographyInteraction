@@ -31,35 +31,56 @@ public class Camshift implements ITracker {
     Rect mRoi;
 
     Mat mRoiMat = new Mat();
-    Mat mRoiHSVMat = new Mat();
+    Mat mFrameHSVMat = new Mat();
     Mat mRoiHist = new Mat();
+
+    // HSV Range values
+    int SMin = 30;
+    int VMin = 10;
+    int VMax = 256;
 
     String TAG = "CamShift";
 
-    MatOfFloat ranges = new MatOfFloat(0f, 256f, 0f, 256f);
-    MatOfInt histSize = new MatOfInt(256,256);
+    MatOfFloat histRanges = new MatOfFloat(0f, 180f);
+    MatOfInt histSize = new MatOfInt(16);
+    MatOfFloat pHistRanges = histRanges;
+    MatOfInt channels = new MatOfInt(0, 0);
+    Mat mMaskRoi;
+
+
+    Mat hist = new Mat();
 
     public Camshift(Mat initialFrame, Rect roi){
-        this.mRoi = roi;
         Log.i(TAG, "Constructed CamShift with frame: " + initialFrame.toString() + " ROI: " + roi.toString());
         setReferenceFrame(initialFrame,roi);
     }
 
     @Override
     public void setReferenceFrame(Mat frame, Rect roi) {
-        mCurrentFrame = frame;
-
-
-        // set up the ROI for tracking
-        mRoiMat = mCurrentFrame.submat(roi);
-        Imgproc.cvtColor(mRoiMat, mRoiHSVMat, Imgproc.COLOR_BGR2HSV);
-        Log.v("CamShift", "ROIHSV channels " + mRoiHSVMat.channels());
-        Mat hsvMask = new Mat();
-        Core.inRange(mRoiMat, new Scalar(0, 60, 32), new Scalar(180,255,255), hsvMask);
-        List<Mat> images = new ArrayList<>(Arrays.asList(mRoiHSVMat));
-
-        Imgproc.calcHist(images, new MatOfInt(1,0), hsvMask, mRoiHist, histSize, ranges);
-        Core.normalize(mRoiHist, mRoiHist, 0, 255, Core.NORM_MINMAX);
+        setup(frame,roi);
+//        mCurrentFrame = frame;
+//        mRoi = roi;
+//
+//        // set up the ROI for tracking
+//        mFrameHSVMat= rgbaToHsv(frame);
+//
+//        // Matrix to mix channels
+//
+//        List<Mat> images = new ArrayList<>(Arrays.asList(mFrameHSVMat));
+//
+//        Core.mixChannels(images,images, channels);
+//        mRoiMat = mFrameHSVMat.submat(roi);
+//
+//        Log.i("CamShift", "ROIHSV channels " + mFrameHSVMat.channels());
+//        Mat hsvMask = new Mat();
+//        Core.inRange(mRoiMat, new Scalar(0, 30, 32), new Scalar(180,255,255), hsvMask);
+//
+//        images = new ArrayList<>(Arrays.asList(mRoiMat));
+//
+//        Imgproc.calcHist(images, new MatOfInt(0), hsvMask, mRoiHist, histSize, histRanges);
+//        Core.normalize(mRoiHist, mRoiHist, 0, 255, Core.NORM_MINMAX);
+//
+//        mMaskRoi = hsvMask.submat(roi);
 
     }
 
@@ -70,20 +91,109 @@ public class Camshift implements ITracker {
 
     @Override
     public RotatedRect getROI(Mat newFrame) {
-        // TODO Continue tracking even through an empty frame
-        if(newFrame.height() == 0 || newFrame.width() == 0) return new RotatedRect(new Point(0,0), new Size(0,0), 0);
-        if(mRoi.height == 0 || mRoi.width == 0) return new RotatedRect(new Point(0,0), new Size(0,0), 0);
-        Mat newFrameHSV = new Mat(newFrame.size(), Imgproc.COLORMAP_HSV);
-
-        Imgproc.cvtColor(newFrame, newFrameHSV, Imgproc.COLOR_BGR2HSV);
-        Mat dest = new Mat();
-        List<Mat> images = new ArrayList<Mat>(Arrays.asList(newFrameHSV));
-        Imgproc.calcBackProject(images,new MatOfInt(1,0), mRoiHist, dest, ranges,1);
-        Log.i(TAG,"ROI" + mRoi.toString());
-        RotatedRect shiftWindow = Video.CamShift(dest, mRoi,new TermCriteria(TermCriteria.EPS, 10, 1));
-        dest.release();
-        return shiftWindow;
+           Log.v(TAG, "Frame: " + newFrame.toString());
+        return findInFrame(newFrame);
+//        // TODO Continue tracking even through an empty frame
+//        if(newFrame.height() == 0 || newFrame.width() == 0) return new RotatedRect(new Point(0,0), new Size(0,0), 0);
+//        if(mRoi.height   == 0 || mRoi.width == 0) return new RotatedRect(new Point(0,0), new Size(0,0), 0);
+//
+//        Mat newFrameHSV = new Mat(newFrame.size(), Imgproc.COLORMAP_HSV);
+//
+//
+//        Imgproc.cvtColor(newFrame, newFrameHSV, Imgproc.COLOR_RGB2HSV);
+//
+//        Mat hsvMask = new Mat();
+//        Core.inRange(newFrameHSV, new Scalar(0, 30, 32), new Scalar(180,255,255), hsvMask);
+//
+//        Mat dest = new Mat();
+//        List<Mat> images = new ArrayList<Mat>(Arrays.asList(newFrameHSV));
+//        Core.mixChannels(images,images, channels);
+//
+//        Imgproc.calcBackProject(images,channels, mRoiHist, dest, histRanges,1);
+//        Log.i(TAG,"ROI" + mRoi.toString());
+//
+//        Mat backProj = new Mat();
+//        dest.copyTo(backProj, hsvMask);
+//        RotatedRect shiftWindow = Video.CamShift(backProj, mRoi,new TermCriteria(TermCriteria.MAX_ITER, 80, 1));
+//
+//        dest.release();
+//        return shiftWindow;
     }
+
+    private Mat rgbaToHsv(Mat rgbaFrame){
+        Mat rgb = new Mat();
+        Imgproc.cvtColor(rgbaFrame, rgb, Imgproc.COLOR_RGBA2RGB);
+        Mat hsv = new Mat();
+        Imgproc.cvtColor(rgb, hsv, Imgproc.COLOR_RGB2HSV);
+        rgb.release();
+        return hsv;
+
+    }
+
+    public void setup(Mat frame, Rect roi){
+        mRoi = roi;
+        Mat image = new Mat();
+        frame.copyTo(image);
+
+        Mat hsvMat = rgbaToHsv(image);
+        Mat mask = new Mat();
+        Core.inRange(hsvMat, new Scalar(0, SMin, Math.min(VMin, VMax)), new Scalar(180, 256, Math.max(VMin, VMax)), mask);
+
+        Mat hue = new Mat(hsvMat.size(), hsvMat.depth());
+
+        List<Mat> hsvList = new ArrayList<Mat>(Arrays.asList(hsvMat));
+        List<Mat> hueList = new ArrayList<Mat>(Arrays.asList(hue));
+
+        Core.mixChannels(hsvList, hueList,channels);
+
+        Mat roiMat = hue.submat(roi);
+        Mat maskRoi = mask.submat(roi);
+
+        List<Mat> rois = new ArrayList<>(Arrays.asList(roiMat));
+
+        Imgproc.calcHist(rois, new MatOfInt(0), maskRoi, hist, histSize, pHistRanges);
+
+        Core.normalize(hist, hist, 0, 255, Core.NORM_MINMAX);
+
+        Log.i(TAG, hist.toString());
+    }
+
+    public RotatedRect findInFrame(Mat newFrame){
+
+        Mat image = new Mat();
+        newFrame.copyTo(image);
+
+        Mat hsvMat = rgbaToHsv(image);
+        Mat mask = new Mat();
+        Core.inRange(hsvMat, new Scalar(0, SMin, Math.min(VMin, VMax)), new Scalar(180, 256, Math.max(VMin, VMax)), mask);
+
+        Mat hue = new Mat(hsvMat.size(), hsvMat.depth());
+
+        List<Mat> hsvList = new ArrayList<Mat>(Arrays.asList(hsvMat));
+        List<Mat> hueList = new ArrayList<Mat>(Arrays.asList(hue));
+
+        Core.mixChannels(hsvList, hueList,channels);
+
+        Mat backProj = new Mat();
+
+        Imgproc.calcBackProject(hueList, new MatOfInt(0), hist, backProj, pHistRanges, 1);
+
+        Mat maskedBackProj = new Mat();
+
+        backProj.copyTo(maskedBackProj, mask);
+        Log.i(TAG, "backProj: " + maskedBackProj.toString());
+        Log.i(TAG, "mRoi: " + mRoi.toString());
+
+        RotatedRect window = Video.CamShift(maskedBackProj, mRoi, new TermCriteria(TermCriteria.MAX_ITER, 10, 1));
+
+        image.release();
+        hsvMat.release();
+        hue.release();
+        backProj.release();
+        maskedBackProj.release();
+        return window;
+    }
+
 
 
 //http://stackoverflow.com/questions/9804254/image-comparison-of-logos
