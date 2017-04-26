@@ -15,6 +15,8 @@ import android.util.Log;
 import android.widget.Toast;
 
 import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.UUID;
 
 /**
@@ -28,21 +30,35 @@ public class MicroBitCommsService {
 //    public final static  String PINADCONFIGURATION_CHARACTERISTIC_UUID = "e95d5899-251d-470a-a062-fa1922dfa9a8";
 //    public final static String PINIOCONFIGURATION_CHARACTERISTIC_UUID = "e95db9fe-251d-470a-a062-fa1922dfa9a8";
 
-    private int currentX = 0;
-    private int currentY = 0;
+    private int currentX = 135;
+    private int currentY = 90;
     private int currentZ = 0;
+
+
+    private int targetX = - 1;
+    private int targetY = - 1;
+
+    private int incrementVal = 1;
+
+    private final int xServoIndex = 13;
+    private final int yServoIndex = 12;
+    private final int ySupportServoIndex = 14;
 
     public static String UARTSERVICE_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
     public static String UART_TX_CHARACTERISTIC_UUID ="6e400002-b5a3-f393-e0a9-e50e24dcca9e";
     public static String UART_RX_CHARACTERISTIC_UUID ="6e400003-b5a3-f393-e0a9-e50e24dcca9e";
 
     final static String TAG = "MicroBitComms";
-
+    final static long mUpdatePeriod = 20;
+    private Timer mTimer;
     private String mMicrobitAddress;
     private Activity activity;
     private boolean mConnected;
     private Handler mHandler;
     private final static int REQUEST_ENABLE_BT = 1;
+
+    private boolean mUpdating = false;
+
 
     final BluetoothManager bluetoothManager ;
     BluetoothAdapter mBluetoothAdapter;
@@ -63,6 +79,8 @@ public class MicroBitCommsService {
         public void onServicesDiscovered( BluetoothGatt gatt, int status) {
             if (status == BluetoothGatt.GATT_SUCCESS){
                 List<BluetoothGattService> serv = gatt.getServices();
+                for(BluetoothGattService service : serv)
+                    Log.d(TAG, service.getUuid().toString());
                 setupRXService();
 
             }
@@ -105,15 +123,14 @@ public class MicroBitCommsService {
         List<BluetoothGattService> services = mBluetoothGatt.getServices();
 
         BluetoothGattService uartService = null;
-        UUID ioPinUUID = UUID.fromString(UARTSERVICE_SERVICE_UUID);
+
         for(BluetoothGattService service : services){
+            Log.d(TAG, service.getUuid().toString());
             if(service.getUuid().toString().equals(UARTSERVICE_SERVICE_UUID) )
                 uartService = service;
         }
         if(uartService != null) {
             List<BluetoothGattCharacteristic> chars = uartService.getCharacteristics();
-
-
 
             // Find services
             for (BluetoothGattCharacteristic characteristic : chars) {
@@ -124,6 +141,22 @@ public class MicroBitCommsService {
 
         }
         mConnected = rxCharacteristic != null;
+        if(!mConnected){
+            Log.d(TAG, "RX characteristic not found");
+        }
+    }
+
+
+    public void incrementToXYZ(int x, int y, int z){
+
+        targetX = x;
+        targetY = y;
+
+    }
+
+    public void incrementToXYZ(int x, int y){
+        targetX = x;
+        targetY = y;
     }
 
     public void writeXY(int x, int y){
@@ -136,24 +169,32 @@ public class MicroBitCommsService {
         Log.v(TAG, "BLE write: " + new String(moveData));
     }
 
+    private void updateXYZ(){
+        if( Math.abs(currentX - targetX) > incrementVal)
+            currentX = currentX < targetX? currentX + incrementVal : currentX - incrementVal;
+
+        if( Math.abs(currentY - targetY) > incrementVal)
+            currentY = currentY < targetY ? currentY + incrementVal : currentY - incrementVal;
+
+        writeXYZ(currentX, currentY, currentZ);
+    }
+
     public void writeXYZ(int x, int y, int z){
+        Log.d(TAG, "BLE Write: X: " + x + " Y: " + y);
         if(!mConnected){
-            Log.v(TAG, "BLE not Connected");
-
-            return;
-
+            Log.d(TAG, "BLE not Connected");
         }
         if(rxCharacteristic == null){
-            Log.v(TAG, "Service not Connected");
+            Log.d(TAG, "Service not Connected");
             return;
         }
 
-        byte[] moveData = {0 ,(byte) (x & 0xFF) , 1, (byte) (y & 0xFF) , 2, (byte) (z & 0xFF) };
+        byte[] moveData = {xServoIndex ,(byte) (x & 0xFF) , yServoIndex, (byte) (y  & 0xFF) , ySupportServoIndex, (byte) (z & 0xFF) };
         //byte[] moveData = {(byte) (x  ), ':', (byte) (y ), ':' };
 
         boolean res = rxCharacteristic.setValue(moveData);
         mBluetoothGatt.writeCharacteristic(rxCharacteristic);
-        Log.v(TAG, "BLE write: " + new String(moveData));
+        Log.d(TAG, "BLE write: " + new String(moveData));
 
     }
 
@@ -166,6 +207,7 @@ public class MicroBitCommsService {
         Log.i(TAG, "BLE write: " + mBluetoothGatt.writeCharacteristic(rxCharacteristic));
         Log.i(TAG, "BLE write: " + mBluetoothGatt.readCharacteristic(rxCharacteristic) +  " " + rxCharacteristic.getValue().toString());
     }
+
     public void write1(){
         if(!mConnected) return;
         if(rxCharacteristic == null) return;
@@ -194,7 +236,11 @@ public class MicroBitCommsService {
                 mMicrobitAddress = device.getAddress();
                 microBit = device;
             }
+
         }
+
+        if(microBit == null)
+            Log.d(TAG, "No MicroBit found");
 
         if(microBit != null){
             BluetoothDevice actual = mBluetoothAdapter.getRemoteDevice(microBit.getAddress());
@@ -202,9 +248,26 @@ public class MicroBitCommsService {
 
         }
     }
+    public void startUpdate(){
+        mUpdating = true;
+
+        mTimer = new Timer();
+        mTimer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                updateXYZ();
+            }
+        }, 0, mUpdatePeriod);
+    }
+
+    public void stopUpdate(){
+        mUpdating = false;
+        mTimer.cancel();
+    }
     public boolean isConnected(){
         return mConnected;
     }
+    public boolean isUpdating(){return mUpdating;}
 
 
 }

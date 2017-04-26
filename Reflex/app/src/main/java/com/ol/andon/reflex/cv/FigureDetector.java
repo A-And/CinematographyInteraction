@@ -10,6 +10,7 @@ import org.opencv.core.MatOfPoint;
 import org.opencv.core.MatOfRect;
 import org.opencv.core.Point;
 import org.opencv.core.Rect;
+import org.opencv.core.RotatedRect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
@@ -163,6 +164,19 @@ public class FigureDetector implements IDetector{
 
     @Override
     public Mat getMainDetected() {
-        return null;
+        return new MatOfRect(getLargestFigure());
+    }
+
+    public Rect getLargestFigure(){
+        Rect maxAreaF = new Rect(0, 0, 0, 0);
+        for (Rect figure : mBodyROIs.toList())
+            maxAreaF = maxAreaF.area() < figure.area() ? figure : maxAreaF;
+        return maxAreaF;
+    }
+    public Rect getLargestFace(){
+        Rect maxAreaF = new Rect(0, 0, 0, 0);
+        for (Rect figure : mFacesDetected.toList())
+            maxAreaF = maxAreaF.area() < figure.area() ? figure : maxAreaF;
+        return maxAreaF;
     }
 }

@@ -8,6 +8,7 @@
     android:paddingBottom="@dimen/camera_vertical_margin"
     android:paddingLeft="@dimen/camera_horizontal_margin"
     android:paddingRight="@dimen/camera_horizontal_margin"
+    android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
     android:paddingTop="@dimen/camera_vertical_margin"
     tools:context="com.ol.andon.reflex.PhotoActivity">
 
@@ -15,8 +16,7 @@
         android:id="@+id/opencv_camera_view"
         android:layout_width="1920dp"
         android:layout_height="960dp"
-        android:visibility="gone"
-        opencv:show_fps="true" />
+        opencv:show_fps="false" />
 
     <LinearLayout
         android:layout_alignParentRight="true"
@@ -24,26 +24,66 @@
         android:layout_height="wrap_content"
         android:layout_weight="1">
 
-        <TextView
-            android:id="@+id/sensor_readings"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/readings_placeholder"
-            android:textColor="@color/textLight" />
+        <!--<TextView-->
+            <!--android:id="@+id/sensor_readings"-->
+            <!--android:layout_width="wrap_content"-->
+            <!--android:layout_height="wrap_content"-->
+            <!--android:text="@string/readings_placeholder"-->
+            <!--android:visibility="gone"-->
+            <!--android:textColor="@color/textLight" />-->
 
-        <TextView
-            android:id="@+id/pcl_readings"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/pcl_placeholder"
-            android:textColor="@color/textLight" />
+        <!--<TextView-->
+            <!--android:id="@+id/pcl_readings"-->
+            <!--android:visibility="gone"-->
+            <!--android:layout_width="wrap_content"-->
+            <!--android:layout_height="wrap_content"-->
+            <!--android:text="@string/pcl_placeholder"-->
+            <!--android:textColor="@color/textLight" />-->
+
+        <ImageView
+            android:id="@+id/photo_glyph"
+            android:visibility="gone"
+            android:layout_height="300px"
+            android:layout_width="300px"
+            android:layout_below="@+id/opencv_camera_view"
+            android:layout_centerHorizontal="true"
+            android:layout_centerVertical="true"
+            android:src="@drawable/ic_camera" />
+
 
         <TextView
             android:id="@+id/tracking_readings"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/tracking_placeholder"
+            android:text=""
             android:textColor="@color/textLight" />
+
+        <!--<Switch-->
+            <!--android:id="@+id/tracking_switch"-->
+            <!--android:layout_width="wrap_content"-->
+            <!--android:layout_height="wrap_content"-->
+            <!--android:layout_alignParentLeft="true"-->
+            <!--android:layout_alignParentTop="true"-->
+            <!--android:layout_gravity="center"-->
+            <!--android:textOff="P"-->
+            <!--android:textOn="T"-->
+            <!--android:shadowColor="@color/colorAccent"-->
+            <!--android:textColor="@color/colorPrimary"-->
+            <!--android:visibility="visible" />-->
+
+        <!--<Switch-->
+            <!--android:id="@+id/bad_shot_switch"-->
+            <!--android:theme="@style/SCBSwitch"-->
+            <!--android:layout_width="wrap_content"-->
+            <!--android:layout_height="wrap_content"-->
+            <!--android:layout_alignParentLeft="true"-->
+            <!--android:layout_alignParentTop="true"-->
+            <!--android:layout_gravity="center"-->
+            <!--android:textOff="P"-->
+            <!--android:textOn="T"-->
+            <!--android:textColor="@color/colorAccent"-->
+            <!--android:visibility="visible" />-->
+
 
         <LinearLayout
             android:layout_width="wrap_content"
@@ -84,13 +124,27 @@
                 android:text="@string/reconnect_button_label" />
 
             <Button
-                android:id="@+id/takePictureButton"
+                android:id="@+id/faceBodySwitchButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:onClick="takePicture"
-                android:text="@string/take_picture_button_label" />
+                android:onClick="faceBodyToggle"
+                android:text="@string/face_body_switch" />
+
+
         </LinearLayout>
     </LinearLayout>
+
 </RelativeLayout>
+
+
+
+
+
+
+
+
+
+
+
 
 

@@ -1,5 +1,7 @@
 package com.ol.andon.reflex.cv;
 
+import android.util.Log;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -92,10 +94,16 @@ public class BlobDetector implements IDetector{
 
         // Find max contour area
         double maxArea = 0;
+        Log.d("BLOB", " Contours: " + contours.toString());
+
         Iterator<MatOfPoint> each = contours.iterator();
+
         while (each.hasNext()) {
-             MatOfPoint wrapper = each.next();
+            MatOfPoint wrapper = each.next();
             double area = Imgproc.contourArea(wrapper);
+
+            Log.d("BLOB", " area: " + area);
+
             if (area > maxArea)
                 maxArea = area;
         }
