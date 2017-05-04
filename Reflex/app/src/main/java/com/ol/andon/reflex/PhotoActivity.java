@@ -1,8 +1,10 @@
 package com.ol.andon.reflex;
 
 import android.content.Context;
+import android.graphics.Color;
 import android.hardware.Camera;
 import android.os.Bundle;
+import android.os.Environment;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.SwitchCompat;
 import android.util.Log;
@@ -15,6 +17,7 @@ import android.view.WindowManager;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
+import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -122,17 +125,19 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
     private long mTotalTime;
 
     // false - face; true - body
-    private boolean mBodyTracking = true;
+    private boolean mBodyTracking = false;
 
     // Figure tracking parameters
     private MatOfRect mFigureRois;
     private boolean evaluationMode = true;
-    private boolean mTrackingEval = true;
+    private boolean mTrackingEval = false;
     private boolean mBadShot = false;
     private int mSessionPictureNum;
 
+    private Logger mLogger;
+    private Logger mPictureRuleLogger;
+
     // User settings to help evaluation
-    private String mSubjectName;
     private SimpleDateFormat mPictureDateFormat = new SimpleDateFormat("yy_MM_d_HH_mm_ss");
 
 
@@ -171,7 +176,10 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
         setContentView(R.layout.activity_photo);
-
+        mLogger = new Logger("movement", 1000, System.currentTimeMillis(), Logger.FileFormat.csv);
+        mLogger.writeAsync("test");
+        mLogger.flush();
+        //mPictureRuleLogger = new Logger("pictures", 1000, System.currentTimeMillis(), Logger.FileFormat.csv);
         // System.loadLibrary("native-lib");
         Log.i(TAG, "Trying to load OpenCV library");
         if (!OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_2_4_10, this, mOpenCVCallBack)) {
@@ -180,43 +188,7 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
         if(evaluationMode){
             LinearLayout servoControl = (LinearLayout) findViewById(R.id.servoControl);
             servoControl.setVisibility(View.GONE);
-//
-//            Switch trackingSwitch = (Switch) findViewById(R.id.tracking_switch);
-//            trackingSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-//                @Override
-//                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-//                    mTrackingEval = isChecked;
-//                }
-//            });
-//            trackingSwitch.setOnKeyListener(new View.OnKeyListener() {
-//                @Override
-//                public boolean onKey(View v, int keyCode, KeyEvent event) {
-//                    if (event.getKeyCode() == KeyEvent.ACTION_DOWN) {
-//
-//                        String key = KeyEvent.keyCodeToString(keyCode);
-//                        Log.i(TAG, "Key pressed switch: " + key);
-//                        if (key.equals("KEYCODE_VOLUME_UP")) {
-//                            // Lock
-//                            toggleFigureTracking();
-//                            return true;
-//                        } else if (key.equals("KEYCODE_ENTER")) {
-//                            if (mRgba != null) {
-//                                takePicture();
-//                            }
-//                            return true;
-//                        }
-//
-//                    }
-//                    return false;
-//                }
-//            });
-//            Switch badShotSwitch = (Switch) findViewById(R.id.bad_shot_switch);
-//            badShotSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-//                @Override
-//                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-//                    mBadShot = isChecked;
-//                }
-//            });
+
 
         }
         // Set up UI seekbars
@@ -260,7 +232,7 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
         mOpenCVCameraView = (JavaCameraView) findViewById(R.id.opencv_camera_view);
         mOpenCVCameraView.setCvCameraViewListener(this);
         mOpenCVCameraView.setOnTouchListener(this);
-        mMicroBitPairingService = new MicroBitCommsService(this);
+        mMicroBitPairingService = new MicroBitCommsService(this, mLogger);
         mMicroBitPairingService.connect();
 
         mCaptureButtonService = new CaptureButtonService();
@@ -268,27 +240,15 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
 
         // Set up number of pictures taken this session
         mSessionPictureNum = 0;
-//
-//        // Set up subject name dialog
-//        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-//        builder.setTitle("Enter Subject Name");
-//
-//        final EditText input = new EditText(this);
-//        input.setInputType(InputType.TYPE_CLASS_TEXT);
-//        builder.setView(input);
-//
-//        // Set up the buttons
-//        builder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
-//            @Override
-//            public void onClick(DialogInterface dialog, int which) {
-//                mSubjectName = input.getText().toString();
-//            }
-//        });
-//
-//        builder.show();
 
     }
 
+    @Override
+    protected void onDestroy(){
+        super.onDestroy();
+        mMicroBitPairingService.disconnect();
+        mLogger.flush();
+    }
     @Override
     protected void onResume() {
         super.onResume();
@@ -548,7 +508,7 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
             final int dispX = mX;
             final int dispY = mY;
 
-            if(!evaluationMode) {
+            if(evaluationMode) {
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
@@ -565,7 +525,7 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
             MatOfRect faces = mFigureDetector.getmFacesDetected();
             mFigureRois = mFigureDetector.getBodyROIs();
 
-            if(true) {
+            if(evaluationMode) {
                 Imgproc.drawContours(mRgba, mDetector.getAllDetected(), -1, CONTOUR_COLOR);
                 Imgproc.circle(mRgba, currCenter, 10, CENTER_COLOR);
 
@@ -621,11 +581,14 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
         Log.i(TAG, "Key pressed: " + key);
         if (key.equals("KEYCODE_VOLUME_UP")) {
             // Lock
-            toggleFigureTracking();
+            takePicture();
             return true;
         } else if (key.equals("KEYCODE_ENTER")) {
             if (mRgba != null) {
                 takePicture();
+
+
+                toggleFigureTracking();
             }
             return true;
         }
@@ -644,7 +607,30 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
 
         mMicroBitPairingService.writeXY((x), (y));
     }
+    public void toggleBadShot(View v){
+        mBadShot = !mBadShot;
+        Button badShotButton = (Button) findViewById(R.id.bad_shot_button);
+        EvalLogger.v(this, TAG, "Bad Shot: " + mBadShot);
+        if(mBadShot)
+            badShotButton.setBackgroundColor(Color.GREEN);
+        else
+            badShotButton.setBackgroundColor(Color.RED);
+    }
+    public void startMovementTest(View V){
+        mMicroBitPairingService.testMovement();
 
+
+    }
+    public void  toggleTrackingEval(View v){
+        mTrackingEval = !mTrackingEval;
+        Button trackingEvalButton = (Button) findViewById(R.id.tracking_eval_button);
+
+        if(mTrackingEval)
+            trackingEvalButton.setBackgroundColor(Color.GREEN);
+        else
+            trackingEvalButton.setBackgroundColor(Color.RED);
+
+    }
     public void mbConnect(View v) {
         mMicroBitPairingService.connect();
     }
@@ -709,9 +695,11 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
         mTrackingStart = 0;
         mMicroBitPairingService.stopUpdate();
         mainBoundLockPoint = null;
-        EvalLogger.v(this.getApplicationContext(),TAG, "Total time" + mTotalTime);
-        EvalLogger.v(this.getApplicationContext(),TAG, "Matched time" + mMatchTime);
-        EvalLogger.v(this.getApplicationContext(), TAG, "Variables " + "Bad shot: " + mBadShot + "Tracking eval: " + mTrackingEval);
+        mLogger.writeAsync(TAG + "Total time" + mTotalTime);
+        mLogger.writeAsync(TAG + "Matched time" + mMatchTime);
+        mLogger.writeAsync(TAG + "Matched time" + mMatchTime);
+
+        mLogger.writeAsync(TAG + "Variables " + "Bad shot: " + mBadShot + "Tracking eval: " + mTrackingEval);
         mMatchTime = 0;
 
     }
@@ -810,8 +798,14 @@ public class PhotoActivity extends AppCompatActivity implements CameraBridgeView
         Calendar c = Calendar.getInstance();
         ((CameraView) mOpenCVCameraView).takePicture(mSessionPictureNum + mPictureDateFormat.format(c.getTime()));
         mSessionPictureNum++;
+
+        Rect bound = mBodyTracking ? mFigureDetector.getLargestFigure() : mFigureDetector.getLargestFace();
+        boolean conformsToRule = GridRule.conforms(bound, CAM_WIDTH, CAM_HEIGHT, 3);
+
+        mPictureRuleLogger.writeAsync(System.currentTimeMillis() + "," + conformsToRule);
         ImageView cameraIcon = (ImageView) findViewById(R.id.photo_glyph);
         fadeOutAndHideImage(cameraIcon);
+
 
     }
 

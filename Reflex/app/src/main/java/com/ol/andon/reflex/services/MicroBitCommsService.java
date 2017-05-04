@@ -14,6 +14,9 @@ import android.os.Handler;
 import android.util.Log;
 import android.widget.Toast;
 
+import com.ol.andon.reflex.EvalLogger;
+import com.ol.andon.reflex.Logger;
+
 import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -43,6 +46,9 @@ public class MicroBitCommsService {
     private final int xServoIndex = 13;
     private final int yServoIndex = 12;
     private final int ySupportServoIndex = 14;
+
+    private Logger mLogger;
+    RotationalPositionService rotationalPositionService;
 
     public static String UARTSERVICE_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
     public static String UART_TX_CHARACTERISTIC_UUID ="6e400002-b5a3-f393-e0a9-e50e24dcca9e";
@@ -98,10 +104,12 @@ public class MicroBitCommsService {
         }
     } ;
 
-    public MicroBitCommsService(Activity activity){
+    public MicroBitCommsService(Activity activity, Logger argLogger){
         this.activity = activity;
         this.mHandler = new Handler();
         bluetoothManager = (BluetoothManager) activity.getSystemService(Context.BLUETOOTH_SERVICE);
+        rotationalPositionService = new RotationalPositionService(activity, argLogger);
+        mLogger = argLogger;
     }
     public boolean connect(){
         boolean res = false;
@@ -152,9 +160,11 @@ public class MicroBitCommsService {
         targetX = x;
         targetY = y;
 
+        mLogger.writeAsync(1 +"," + System.currentTimeMillis() + "," + targetX + "," + targetY + "," + z
+                + "," + 1) ;
     }
 
-    public void incrementToXYZ(int x, int y){
+    public void incrementToXY(int x, int y){
         targetX = x;
         targetY = y;
     }
@@ -178,8 +188,33 @@ public class MicroBitCommsService {
 
         writeXYZ(currentX, currentY, currentZ);
     }
+    public void testMovement(){
+        mLogger.writeAsync("Movement test");
+        rotationalPositionService.startRotationLogging();
+        mLogger.writeAsync("Horizontal");
+        int x = 90;
+        int y = 90;
+        writeXYZ(90, 90, 0);
 
+        writeXYZ(180, 90, 0);
+
+        mLogger.writeAsync("Vertical");
+        x = 75;
+        y = 0;
+
+        writeXYZ(75, 0, 0);
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        writeXYZ(75, 180, 0);
+
+        rotationalPositionService.stopRotationLogging();
+
+    }
     public void writeXYZ(int x, int y, int z){
+        //mLogger.writeAsync(TAG +  ": Gyro Vector X: " + x + " Y: " + y);
         Log.d(TAG, "BLE Write: X: " + x + " Y: " + y);
         if(!mConnected){
             Log.d(TAG, "BLE not Connected");
@@ -258,11 +293,15 @@ public class MicroBitCommsService {
                 updateXYZ();
             }
         }, 0, mUpdatePeriod);
+        rotationalPositionService.startRotationLogging();
+
     }
 
     public void stopUpdate(){
         mUpdating = false;
         mTimer.cancel();
+        rotationalPositionService.stopRotationLogging();
+
     }
     public boolean isConnected(){
         return mConnected;

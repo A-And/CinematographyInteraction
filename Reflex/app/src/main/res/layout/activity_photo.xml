@@ -57,34 +57,58 @@
             android:layout_height="wrap_content"
             android:text=""
             android:textColor="@color/textLight" />
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+            <SeekBar
+                android:layout_width="0px"
+                android:layout_height="0px"
+                />
+            <Button
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="BS"
+                android:textColor="#ffff"
+                android:id="@+id/bad_shot_button"
+                android:onClick="toggleBadShot"/>
 
+            <Button
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#ffff"
+                android:text="TE"
+                android:id="@+id/tracking_eval_button"
+                android:onClick="toggleTrackingEval"/>
         <!--<Switch-->
             <!--android:id="@+id/tracking_switch"-->
             <!--android:layout_width="wrap_content"-->
             <!--android:layout_height="wrap_content"-->
-            <!--android:layout_alignParentLeft="true"-->
-            <!--android:layout_alignParentTop="true"-->
-            <!--android:layout_gravity="center"-->
             <!--android:textOff="P"-->
             <!--android:textOn="T"-->
             <!--android:shadowColor="@color/colorAccent"-->
             <!--android:textColor="@color/colorPrimary"-->
-            <!--android:visibility="visible" />-->
+            <!--android:visibility="visible"-->
+            <!--android:contextClickable="false"-->
+            <!--android:clickable="false"/>-->
 
         <!--<Switch-->
             <!--android:id="@+id/bad_shot_switch"-->
             <!--android:theme="@style/SCBSwitch"-->
             <!--android:layout_width="wrap_content"-->
             <!--android:layout_height="wrap_content"-->
-            <!--android:layout_alignParentLeft="true"-->
-            <!--android:layout_alignParentTop="true"-->
-            <!--android:layout_gravity="center"-->
             <!--android:textOff="P"-->
             <!--android:textOn="T"-->
             <!--android:textColor="@color/colorAccent"-->
-            <!--android:visibility="visible" />-->
+            <!--android:visibility="visible"-->
+            <!--android:contextClickable="false"-->
+            <!--android:clickable="false"/>-->
+            <Button android:layout_height="300px"
+                android:text="MT"
+                android:layout_width="300px"
+                android:onClick="startMovementTest"></Button>
 
-
+        </LinearLayout>
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
